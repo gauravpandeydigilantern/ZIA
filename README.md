@@ -1,5 +1,5 @@
 # ZIA Women's Health AI Assistant
-## Technical Documentation
+##  Technical Documentation
 
 
 ---
@@ -34,45 +34,45 @@ graph TB
         direction TB
         
         subgraph CoreServices["Core Services"]
-            CONV[Conversation Service<br/>Node.js + Express<br/>Auto-scale: 2-10 instances]
-            JUDGE[Judge Validation Service<br/>Quality Assurance Layer<br/>Python + FastAPI<br/>Dedicated instances]
-            PROFILE[Profile Service<br/>Node.js + Express<br/>Patient data management]
+            CONV[Conversation<br/>Node.js + Express]
+            JUDGE[Judge Validation<br/>Python + FastAPI]
+            PROFILE[Profile Service<br/>Node.js + Express]
         end
         
         subgraph SupportServices["Support Services"]
-            CLINICAL[Clinical Service<br/>Node.js + Express<br/>Provider tools & EMR export]
-            TRAINING[Training Service<br/>Python + FastAPI<br/>Physician portal & ML]
-            NOTIFY[Notification Service<br/>Node.js + Express<br/>Email, SMS, Push]
+            CLINICAL[Clinical Service<br/>Node.js + Express]
+            TRAINING[Training Service<br/>Python + FastAPI]
+            NOTIFY[Notification<br/>Node.js + Express]
         end
     end
     
     subgraph AIServices["Azure OpenAI Service"]
         direction LR
-        PRIMARY[Primary AI Instance<br/>Deployment: zia-assistant<br/>Model: gpt-4-turbo<br/>Temperature: 0.3<br/>Max Tokens: 1500<br/>Region: East US 2]
+        PRIMARY[Primary AI<br/>gpt-4-turbo<br/>East US 2]
         
-        JUDGEAI[Judge AI Instance<br/>Deployment: zia-judge<br/>Model: gpt-4-turbo<br/>Temperature: 0.1<br/>Max Tokens: 800<br/>Region: West US 2]
+        JUDGEAI[Judge AI<br/>gpt-4-turbo<br/>West US 2]
         
-        SPEECH[Azure Speech Service<br/>Voice Recognition<br/>Text-to-Speech<br/>Multi-language]
+        SPEECH[Speech Service<br/>Voice & Text]
     end
     
     subgraph DataLayer["Data Persistence Layer"]
         direction TB
         
-        SQL[(Azure SQL Database<br/>Premium Tier<br/>• User profiles<br/>• Judge evaluations<br/>• Audit logs<br/>• Training data<br/>TDE Encryption)]
+        SQL[(SQL Database<br/>User Profiles<br/>Judge Data)]
         
-        COSMOS[(Cosmos DB<br/>Serverless<br/>• Conversations<br/>• Chat history<br/>• Timeline events<br/>• Real-time sync)]
+        COSMOS[(Cosmos DB<br/>Conversations<br/>Chat History)]
         
-        BLOB[Azure Blob Storage<br/>Hot/Cool tiers<br/>• Voice recordings<br/>• Documents<br/>• Images<br/>• Backups]
+        BLOB[Blob Storage<br/>Files & Documents]
         
-        REDIS[(Azure Redis Cache<br/>Premium P1<br/>• Session state<br/>• Token limits<br/>• Rate limiting<br/>• Performance)]
+        REDIS[(Redis Cache<br/>Sessions & Tokens)]
     end
     
     subgraph SecurityCompliance["Security & Compliance"]
-        VAULT[Azure Key Vault<br/>Secrets Management<br/>Certificate Storage<br/>Key Rotation]
+        VAULT[Key Vault<br/>Secrets & Keys]
         
-        MONITOR[Azure Monitor<br/>Application Insights<br/>Log Analytics<br/>Real-time Alerts]
+        MONITOR[Azure Monitor<br/>Logging & Alerts]
         
-        SENTINEL[Azure Sentinel<br/>SIEM<br/>Threat Detection<br/>Incident Response]
+        SENTINEL[Sentinel<br/>Security & SIEM]
     end
     
     USERS --> FD
@@ -126,9 +126,9 @@ graph TB
     end
     
     subgraph PrimaryAI["Primary AI Processing"]
-        CONTEXT[Load Context<br/>• User profile<br/>• Medical history<br/>• Conversation history<br/>• Current symptoms]
+        CONTEXT[Load Context<br/>User Profile<br/>Medical History]
         
-        PROMPT[Build Prompt<br/>• System instructions<br/>• User context<br/>• Safety guidelines<br/>• Medical knowledge]
+        PROMPT[Build Prompt<br/>System Instructions<br/>User Context]
         
         GENERATE[Azure OpenAI API Call<br/>gpt-4-turbo<br/>Temperature: 0.3<br/>Max tokens: 1500]
         
@@ -139,13 +139,19 @@ graph TB
         INTERCEPT[Response Interceptor<br/>NO BYPASS POSSIBLE<br/>100% Coverage]
     end
     
-    subgraph JudgeSystem["JUDGE VALIDATION SERVICE - QUALITY ASSURANCE"]
+    subgraph JudgeSystem["JUDGE VALIDATION SERVICE"]
+
+
+
+
+
+
         direction TB
         
         JUDGEAPI[Judge API Endpoint<br/>POST /api/judge/evaluate]
         
         subgraph EvaluationEngine["Evaluation Engine"]
-            PARSE[Parse Request<br/>• Original query<br/>• AI response<br/>• User context<br/>• Urgency level]
+            PARSE[Parse Request<br/>Query & Response<br/>Context Analysis]
             
             BUILD[Build Judge Prompt<br/>Specialized evaluation<br/>instructions]
             
@@ -153,15 +159,11 @@ graph TB
         end
         
         subgraph CriteriaEvaluation["5-Criteria Assessment"]
-            SAFETY[Safety Evaluation 30%<br/>• Harmful content<br/>• Emergency detection<br/>• Triage accuracy<br/>• Contraindications]
-            
-            ACCURACY[Accuracy Validation 25%<br/>• Medical guidelines<br/>• Fact checking<br/>• Evidence-based<br/>• Literature alignment]
-            
-            PRIVACY[Privacy Protection 20%<br/>• PHI detection<br/>• Data minimization<br/>• Consent validation<br/>• Anonymization]
-            
-            TONE[Experience 15%<br/>• Empathy level<br/>• Professional tone<br/>• Cultural sensitivity<br/>• Language clarity<br/>• User experience quality]
-            
-            COMPLIANCE[Compliance 10%<br/>• Regulatory adherence<br/>• Liability management<br/>• Disclaimer presence<br/>• Scope boundaries]
+            SAFETY[Safety<br/>30%]
+            ACCURACY[Accuracy<br/>25%]
+            PRIVACY[Privacy<br/>20%]
+            TONE[Experience<br/>15%]
+            COMPLIANCE[Compliance<br/>10%]
         end
         
         subgraph Scoring["Scoring & Decision"]
@@ -176,7 +178,7 @@ graph TB
             ESCALATE[ESCALATE<br/>Score < 60<br/>Human review required]
         end
         
-        AUDIT[Audit Logger<br/>• Full evaluation record<br/>• Timestamp<br/>• Scores breakdown<br/>• Decision reasoning<br/>7-year retention]
+        AUDIT[Audit Logger<br/>Evaluation Record<br/>7-year Retention]
     end
     
     subgraph Outcomes["Decision Outcomes"]
@@ -271,57 +273,41 @@ The Judge evaluation system uses a configurable rubric-based scoring framework t
 - Maximum retry attempts: 3
 
 ```mermaid
-graph LR
-    subgraph SafetyCriteria["Safety Evaluation - 30% Weight (Configurable)"]
-        S1[Harmful Content Detection<br/>• Dangerous advice<br/>• Self-harm indicators<br/>• Substance abuse]
-        
-        S2[Emergency Recognition<br/>• Life-threatening symptoms<br/>• Urgent care needed<br/>• 911 situations]
-        
-        S3[Triage Accuracy<br/>• Severity assessment<br/>• Urgency level<br/>• Care pathway]
-        
-        S4[Medical Contraindications<br/>• Drug interactions<br/>• Allergy conflicts<br/>• Condition warnings]
-        
-        S5[Scope Boundaries<br/>• Within AI limits<br/>• No diagnosis claims<br/>• Appropriate referrals]
+graph TB
+    subgraph SafetyCriteria["Safety Evaluation - 30%"]
+        S1[Harmful Content<br/>Detection]
+        S2[Emergency<br/>Recognition]
+        S3[Triage<br/>Accuracy]
+        S4[Medical<br/>Contraindications]
+        S5[Scope<br/>Boundaries]
     end
     
-    subgraph AccuracyCriteria["Accuracy Validation - 25% Weight"]
-        A1[Guideline Alignment<br/>• ACOG standards<br/>• CDC guidelines<br/>• NIH protocols]
-        
-        A2[Fact Verification<br/>• Medical accuracy<br/>• Statistical correctness<br/>• Current information]
-        
-        A3[Evidence-Based<br/>• Scientific backing<br/>• Research support<br/>• Peer-reviewed sources]
-        
-        A4[Clinical Consistency<br/>• Symptom-condition match<br/>• Treatment appropriateness<br/>• Standard of care]
+    subgraph AccuracyCriteria["Accuracy Validation - 25%"]
+        A1[Guideline<br/>Alignment]
+        A2[Fact<br/>Verification]
+        A3[Evidence<br/>Based]
+        A4[Clinical<br/>Consistency]
     end
     
-    subgraph PrivacyCriteria["Privacy Protection - 20% Weight"]
-        P1[PHI Detection<br/>• Names, addresses<br/>• Medical record numbers<br/>• Insurance details]
-        
-        P2[Data Minimization<br/>• Only necessary info<br/>• Appropriate detail level<br/>• Context-appropriate]
-        
-        P3[Consent Validation<br/>• User permissions<br/>• Sharing limits<br/>• Data usage rules]
-        
-        P4[Anonymization Check<br/>• De-identification<br/>• Generic references<br/>• Privacy preservation]
+    subgraph PrivacyCriteria["Privacy Protection - 20%"]
+        P1[PHI<br/>Detection]
+        P2[Data<br/>Minimization]
+        P3[Consent<br/>Validation]
+        P4[Anonymization<br/>Check]
     end
     
-    subgraph ToneCriteria["Experience - 15% Weight (Configurable)"]
-        T1[Empathy Assessment<br/>• Emotional support<br/>• Understanding tone<br/>• Compassionate language]
-        
-        T2[Professional Standards<br/>• Medical professionalism<br/>• Appropriate boundaries<br/>• Respectful communication]
-        
-        T3[Cultural Sensitivity<br/>• Inclusive language<br/>• Cultural awareness<br/>• Diverse perspectives]
-        
-        T4[Language Clarity<br/>• Plain English<br/>• Avoid jargon<br/>• Accessible explanation]
-        
-        T5[User Experience Quality<br/>• Response relevance<br/>• Question addressed<br/>• Actionable guidance<br/>• Patient satisfaction]
+    subgraph ToneCriteria["Experience - 15%"]
+        T1[Empathy<br/>Assessment]
+        T2[Professional<br/>Standards]
+        T3[Cultural<br/>Sensitivity]
+        T4[Language<br/>Clarity]
+        T5[User Experience<br/>Quality]
     end
     
-    subgraph ComplianceCriteria["Compliance - 10% Weight (Configurable)"]
-        C1[Regulatory Adherence<br/>• FDA guidelines<br/>• State regulations<br/>• Healthcare laws]
-        
-        C2[Liability Management<br/>• No doctor-patient relationship<br/>• Appropriate disclaimers<br/>• Risk mitigation]
-        
-        C3[Professional Referrals<br/>• Encourage consultation<br/>• Provider involvement<br/>• Appropriate escalation]
+    subgraph ComplianceCriteria["Compliance - 10%"]
+        C1[Regulatory<br/>Adherence]
+        C2[Liability<br/>Management]
+        C3[Professional<br/>Referrals]
     end
     
     S1 --> SCORE1[Safety Score<br/>0-100]
@@ -444,71 +430,71 @@ The Profile Service manages comprehensive patient information required for perso
 ```mermaid
 graph TB
     subgraph TrainerAccess["Physician Training Portal Access"]
-        LOGIN[Trainer Login<br/>Azure AD B2C<br/>MFA Required<br/>Role: Trainer]
+        LOGIN[Trainer Login<br/>MFA Required]
         
-        DASH[Training Dashboard<br/>• Review queue<br/>• Test scenarios<br/>• Performance metrics<br/>• Compensation tracking]
+        DASH[Training Dashboard<br/>Review & Metrics]
     end
     
     subgraph ReviewQueue["Review Queue Management"]
         QUEUE[Review Queue<br/>Priority-based sorting]
         
-        CRITICAL[Critical Priority<br/>• Safety failures<br/>• Emergency misses<br/>• Dangerous advice<br/>Immediate review]
+        CRITICAL[Critical Priority<br/>Safety Issues<br/>Immediate Review]
         
-        HIGH[High Priority<br/>• Accuracy issues<br/>• Privacy concerns<br/>• Escalated cases<br/>Review within 24h]
+        HIGH[High Priority<br/>Accuracy Issues<br/>24h Review]
         
-        MEDIUM[Medium Priority<br/>• Random samples<br/>• Edge cases<br/>• Quality checks<br/>Review within week]
+        MEDIUM[Medium Priority<br/>Quality Checks<br/>Weekly Review]
         
-        ROUTINE[⚪ Routine Review<br/>• Passed responses<br/>• Training samples<br/>• Performance validation<br/>Ongoing review]
+        ROUTINE[Routine Review<br/>Training Samples<br/>Ongoing]
     end
     
     subgraph CaseReview["Case Review Interface"]
-        SELECT[Select Case<br/>From queue]
+        SELECT[Select Case<br/>From Queue]
         
-        DETAILS[View Complete Details<br/>Patient query anonymized<br/>AI response<br/>Judge evaluation<br/>Score breakdown<br/>Decision reasoning<br/>Context information]
+        DETAILS[View Details<br/>Patient Query<br/>AI Response<br/>Judge Scores]
         
-        COMPARE[Compare Against<br/>• Medical guidelines<br/>• Best practices<br/>• Previous similar cases<br/>• Expected outcomes]
+        COMPARE[Compare Against<br/>Guidelines<br/>Best Practices]
     end
     
     subgraph TrainerActions["Trainer Actions"]
         ACTION{Trainer Decision}
         
-        APPROVE[Approve<br/>Judge decision correct<br/>Confirm evaluation<br/>Validate reasoning<br/>Mark as training example]
+        APPROVE[Approve<br/>Decision Correct]
         
-        CORRECT[Provide Correction<br/>Should have been different<br/>Correct response<br/>Explain reasoning<br/>Provide guidance<br/>Update training data]
+        CORRECT[Provide Correction<br/>Better Response]
         
-        FLAG[Flag Critical Issue<br/>Dangerous or Incorrect<br/>Escalate to admin<br/>Document concern<br/>Trigger review<br/>Update safety rules]
+        FLAG[Flag Issue<br/>Escalate Admin]
         
-        COMMENT[Add Comments<br/>Detailed feedback<br/>Learning points<br/>Edge case notes<br/>Improvement suggestions]
+        COMMENT[Add Comments<br/>Feedback Notes]
     end
     
     subgraph Compensation["Compensation System"]
         TRACK[Track Contributions<br/>Compensation system]
         
-        COUNT[Count Reviews<br/>• Cases reviewed<br/>• Quality of feedback<br/>• Time spent<br/>• Complexity level]
+        COUNT[Count Reviews<br/>Cases & Quality]
         
-        CALCULATE[Calculate Payment<br/>• Per case rate<br/>• Quality bonus<br/>• Volume incentive<br/>• Monthly total]
+        CALCULATE[Calculate Payment<br/>Rates & Bonuses]
         
-        PAYOUT[Process Payout<br/>• Monthly payment<br/>• Bank transfer<br/>• Payment record<br/>• Tax documentation]
+        PAYOUT[Process Payout<br/>Monthly Transfer]
     end
     
     subgraph TestingScenarios["Testing & Validation"]
-        SCENARIOS[Test Scenario Library<br/>• Emergency detection<br/>• Safety validation<br/>• Accuracy testing<br/>• Privacy checks<br/>• Edge cases]
+        SCENARIOS[Test Scenarios<br/>Safety & Accuracy]
         
-        RUNTEST[Run Test Scenario<br/>• Generate AI response<br/>• Judge evaluation<br/>• Compare expected vs actual]
+        RUNTEST[Run Tests<br/>AI vs Expected]
         
-        RESULTS[View Test Results<br/>• Pass/Fail status<br/>• Score breakdown<br/>• Performance metrics<br/>• Improvement areas]
+        RESULTS[View Results<br/>Pass/Fail Status]
         
-        ADJUST[Adjust Configuration<br/>• Modify weights<br/>• Update thresholds<br/>• Refine prompts<br/>• Add rules]
+        ADJUST[Adjust Config<br/>Weights & Rules]
     end
     
     subgraph ImprovementLoop["Continuous Improvement"]
-        AGGREGATE[Aggregate Feedback<br/>• Collect all reviews<br/>• Identify patterns<br/>• Common issues<br/>• Success cases]
+        AGGREGATE[Aggregate Feedback<br/>Patterns & Issues]
         
-        ANALYZE[Analyze Trends<br/>• Error patterns<br/>• Improvement areas<br/>• Performance gaps<br/>• Training needs]
+        ANALYZE[Analyze Trends<br/>Performance Gaps]
         
-        UPDATE[Update Judge System<br/>• Refine prompts<br/>• Adjust criteria<br/>• Update knowledge base<br/>• Improve accuracy]
+        UPDATE[Update System<br/>Prompts & Criteria]
         
-        DEPLOY[Deploy Updates<br/>• A/B testing<br/>• Gradual rollout<br/>• Monitor impact<br/>• Validate improvement]
+        DEPLOY[Deploy Updates<br/>A/B Testing]
     end
     
     LOGIN --> DASH
@@ -654,32 +640,32 @@ graph TB
         direction TB
         
         subgraph WebApp["Web Application"]
-            PWA[Progressive Web App<br/>React 18 + TypeScript + Vite<br/>• Responsive design<br/>• Offline capability<br/>• Service workers<br/>• Push notifications<br/>• WCAG 2.1 AA compliant]
+            PWA[Progressive Web App<br/>React 18 + TypeScript<br/>Responsive & Offline]
             
-            WEBFEATURES[Web Features<br/>• Real-time chat Socket.io<br/>• Voice input/output Web Speech API<br/>• Timeline view<br/>• Profile management<br/>• Document upload]
+            WEBFEATURES[Web Features<br/>Chat, Voice & Timeline<br/>Document Upload]
         end
         
         subgraph MobileApp["Cross-Platform Mobile"]
-            MOBILE[React Native Application<br/>React Native 0.72+ TypeScript<br/>• Single codebase<br/>• iOS 13+ Android 8+<br/>• Dark mode support<br/>• Native navigation]
+            MOBILE[React Native App<br/>iOS 13+ Android 8+<br/>Single Codebase]
             
-            MOBILEFEATURES[Mobile Features<br/>HealthKit Google Fit<br/>Biometric auth FaceID Fingerprint<br/>Push notifications FCM APNS<br/>Offline sync AsyncStorage<br/>Native camera document scan]
+            MOBILEFEATURES[Mobile Features<br/>HealthKit Integration<br/>Biometric Auth & Camera]
         end
     end
     
     subgraph SharedBackend["Shared Backend Services"]
         direction LR
         
-        RESTAPI[REST API Gateway<br/>Node.js + Express<br/>Azure API Management<br/>• Versioned endpoints<br/>• Rate limiting<br/>• JWT validation]
+        RESTAPI[REST API Gateway<br/>Node.js + Express<br/>Rate Limiting & JWT]
         
-        WEBSOCKET[WebSocket Server<br/>Node.js + Socket.io<br/>• Live chat updates<br/>• Notification delivery<br/>• Presence status<br/>• Room management]
+        WEBSOCKET[WebSocket Server<br/>Socket.io<br/>Live Chat Updates]
         
-        SYNC[Offline Sync Service<br/>Node.js<br/>• Conflict resolution<br/>• Queue management<br/>• Delta sync]
+        SYNC[Offline Sync<br/>Conflict Resolution<br/>Delta Sync]
     end
     
     subgraph DataSync["Data Synchronization"]
-        COSMOS[(Cosmos DB<br/>Multi-region write<br/>• Automatic failover<br/>• Conflict resolution<br/>• Global distribution)]
+        COSMOS[(Cosmos DB<br/>Multi-region Write<br/>Auto Failover)]
         
-        CACHE[(Redis Cache<br/>• Session state<br/>• Temporary data<br/>• Quick access<br/>• Cross-device sync)]
+        CACHE[(Redis Cache<br/>Session State<br/>Cross-device Sync)]
     end
     
     PWA --> RESTAPI
@@ -712,7 +698,7 @@ graph LR
     end
     
     subgraph SpeechProcessing["Azure Speech Service"]
-        STT[Speech-to-Text<br/>• Real-time transcription<br/>• Multi-language support<br/>• Accent adaptation<br/>• Noise cancellation]
+        STT[Speech-to-Text<br/>Real-time<br/>Multi-language]
         
         CONFIDENCE[Confidence Scoring<br/>• Accuracy check<br/>• Unclear audio detection<br/>• Request clarification]
     end
@@ -732,13 +718,13 @@ graph LR
     end
     
     subgraph VoiceOutput["Voice Response"]
-        TTS[Text-to-Speech<br/>Azure Speech Service<br/>• Natural voice<br/>• Emotional tone<br/>• Speed control<br/>• Multiple voices]
+        TTS[Text-to-Speech<br/>Natural Voice<br/>Multiple Languages]
         
         PLAY[Play Audio<br/>To patient]
     end
     
     subgraph Storage["Storage"]
-        BLOB[Azure Blob Storage<br/>• Original audio<br/>• Transcription<br/>• Generated audio<br/>• Audit trail]
+        BLOB[Blob Storage<br/>Audio Files<br/>Audit Trail]
     end
     
     SPEAK --> RECORD
@@ -792,21 +778,21 @@ graph TB
     subgraph TimelineEngine["Timeline Engine"]
         BUILD[Timeline Builder<br/>• Chronological sort<br/>• Event grouping<br/>• Relationship mapping]
         
-        FILTER[Smart Filtering<br/>• Date range<br/>• Event type<br/>• Keyword search<br/>• Relevance scoring]
+        FILTER[Smart Filtering<br/>Date & Type<br/>Keyword Search]
         
-        VISUALIZE[Visualization Engine<br/>• Interactive timeline<br/>• Zoom levels<br/>• Detail expansion<br/>• Export options]
+        VISUALIZE[Timeline View<br/>Interactive<br/>Export Options]
     end
     
     subgraph Storage["Storage Layer"]
-        COSMOS[(Cosmos DB<br/>Timeline Events<br/>• Partitioned by user<br/>• Indexed by date<br/>• Fast queries)]
+        COSMOS[(Cosmos DB<br/>Timeline Events<br/>User Partitioned)]
         
         SEARCH[Azure Cognitive Search<br/>• Full-text search<br/>• Faceted navigation<br/>• Relevance ranking]
     end
     
     subgraph Presentation["User Interface"]
-        TIMELINE[Timeline View<br/>• Scrollable interface<br/>• Event cards<br/>• Quick actions<br/>• Share/Export]
+        TIMELINE[Timeline Interface<br/>Event Cards<br/>Share & Export]
         
-        DETAILS[Detail View<br/>• Full event info<br/>• Related events<br/>• Attachments<br/>• Provider notes]
+        DETAILS[Event Details<br/>Full Information<br/>Attachments]
         
         EXPORT[Export Options<br/>• PDF report<br/>• JSON data<br/>• Share with provider<br/>• Print-friendly]
     end
@@ -844,11 +830,11 @@ graph TB
 ```mermaid
 graph TB
     subgraph UserTiers["User Account Tiers"]
-        FREE[Free Tier<br/>• 1000 tokens/month<br/>• Basic features<br/>• Standard support<br/>• Ads supported]
+        FREE[Free Tier<br/>1000 tokens/month<br/>Basic Features]
         
-        PREMIUM[Premium Tier<br/>• Unlimited tokens<br/>• All features<br/>• Priority support<br/>• Ad-free<br/>$9.99/month]
+        PREMIUM[Premium Tier<br/>Unlimited Tokens<br/>$9.99/month]
         
-        ENTERPRISE[Enterprise Tier<br/>• Unlimited tokens<br/>• Custom features<br/>• Dedicated support<br/>• SLA guarantee<br/>Custom pricing]
+        ENTERPRISE[Enterprise Tier<br/>Custom Features<br/>Dedicated Support]
     end
     
     subgraph TokenTracking["Token Tracking System"]
@@ -856,9 +842,9 @@ graph TB
         
         CHECK{Check Tier &<br/>Token Balance}
         
-        REDIS[(Redis Cache<br/>Real-time counters<br/>• User ID key<br/>• Current usage<br/>• Reset date<br/>• Fast access)]
+        REDIS[(Redis Cache<br/>Usage Counters<br/>Fast Access)]
         
-        CALCULATE[Calculate Token Cost<br/>• Input tokens<br/>• Output tokens<br/>• AI processing<br/>• Judge evaluation]
+        CALCULATE[Calculate Cost<br/>Input + Output Tokens]
     end
     
     subgraph Enforcement["🚦 Usage Enforcement"]
@@ -872,17 +858,17 @@ graph TB
     end
     
     subgraph UpgradeFlow["💳 Upgrade Flow"]
-        PROMPT[Upgrade Prompt<br/>• Benefits display<br/>• Pricing options<br/>• Trial offer]
+        PROMPT[Upgrade Prompt<br/>Benefits & Pricing]
         
-        PAYMENT[Payment Processing<br/>Stripe Integration<br/>• Secure checkout<br/>• Subscription management<br/>• Invoice generation]
+        PAYMENT[Payment Processing<br/>Stripe Integration]
         
-        ACTIVATE[Activate Premium<br/>• Update tier<br/>• Reset limits<br/>• Enable features]
+        ACTIVATE[Activate Premium<br/>Update Tier]
     end
     
     subgraph Analytics["📈 Usage Analytics"]
-        TRACK[Track Usage Patterns<br/>• Daily usage<br/>• Peak times<br/>• Feature usage<br/>• Conversion metrics]
+        TRACK[Track Patterns<br/>Usage & Metrics]
         
-        REPORT[Generate Reports<br/>• User dashboards<br/>• Admin analytics<br/>• Business intelligence]
+        REPORT[Generate Reports<br/>Analytics Dashboard]
     end
     
     FREE --> REQUEST
@@ -1533,11 +1519,11 @@ Provider workflow for exporting patient summaries:
 graph TB
     MESSAGE[Patient Message Received] --> ANALYZE[Real-time Content Analysis]
     
-    ANALYZE --> KEYWORDS[Keyword Detection Engine<br/>• Severe pain<br/>• Heavy bleeding<br/>• Chest pain<br/>• Difficulty breathing<br/>• Suicidal thoughts<br/>• Loss of consciousness<br/>• Severe headache]
+    ANALYZE --> KEYWORDS[Keyword Detection<br/>Critical Symptoms]
     
-    ANALYZE --> CONTEXT[Context Analysis<br/>• Pregnancy complications<br/>• Medication reactions<br/>• Trauma/injury<br/>• Fever with symptoms<br/>• Abnormal vital signs]
+    ANALYZE --> CONTEXT[Context Analysis<br/>Medical History]
     
-    ANALYZE --> PATTERNS[Pattern Recognition ML<br/>• Symptom combinations<br/>• Duration & severity<br/>• Symptom progression<br/>• Historical context<br/>• Risk factors]
+    ANALYZE --> PATTERNS[Pattern Recognition<br/>ML Analysis]
     
     KEYWORDS --> TRIAGE[Automated Triage Assessment<br/>Multi-factor scoring]
     CONTEXT --> TRIAGE
@@ -1552,33 +1538,33 @@ graph TB
     
     CRITICAL --> EMERGENCY[Emergency Response Protocol]
     
-    EMERGENCY --> PATNOTIFY[Notify Patient<br/>• Display 911 message<br/>• Show emergency contacts<br/>• Provide safety instructions<br/>• Log interaction]
+    EMERGENCY --> PATNOTIFY[Notify Patient<br/>911 Message<br/>Safety Instructions]
     
-    EMERGENCY --> PROVNOTIFY[Multi-Channel Provider Alert<br/>• SMS to on-call provider<br/>• Email with high priority<br/>• Dashboard red alert<br/>• Push notification<br/>• Escalation if no response]
+    EMERGENCY --> PROVNOTIFY[Provider Alert<br/>Multi-Channel<br/>SMS & Email]
     
-    EMERGENCY --> ADMINNOTIFY[Admin Alert<br/>System notification<br/>Incident log<br/>Regulatory tracking]
+    EMERGENCY --> ADMINNOTIFY[Admin Alert<br/>Incident Log]
     
-    EMERGENCY --> DOCLOG[Comprehensive Documentation<br/>Timestamp millisecond precision<br/>Patient ID and demographics<br/>Exact message content<br/>Symptoms identified<br/>Actions taken<br/>Response times<br/>Provider acknowledgment]
+    EMERGENCY --> DOCLOG[Documentation<br/>Full Audit Trail<br/>Precise Timestamps]
     
     HIGH --> PRIORITY[Add to Priority Queue<br/>Top of provider dashboard]
     
-    PRIORITY --> HIGHNOTIFY[Provider Notification<br/>• Email alert<br/>• Dashboard notification<br/>• SMS if no response in 2h]
+    PRIORITY --> HIGHNOTIFY[Provider Alert<br/>Email & Dashboard<br/>2h Escalation]
     
-    PRIORITY --> GUIDANCE[Provide Patient Guidance<br/>• Safety instructions<br/>• Warning signs to watch<br/>• When to call 911<br/>• Self-care recommendations]
+    PRIORITY --> GUIDANCE[Patient Guidance<br/>Safety Instructions<br/>Warning Signs]
     
-    MEDIUM --> SCHEDULE[Suggest Scheduling<br/>Appointment within 7 days]
+    MEDIUM --> SCHEDULE[Suggest Scheduling<br/>Within 7 Days]
     
-    SCHEDULE --> SELFCARE[Self-Care Instructions<br/>• Symptom monitoring<br/>• Home remedies<br/>• Red flags to watch<br/>• When to escalate]
+    SCHEDULE --> SELFCARE[Self-Care Guide<br/>Monitoring & Remedies]
     
-    ROUTINE --> CONTINUE[Normal AI Conversation Flow<br/>With Judge Validation]
+    ROUTINE --> CONTINUE[Normal AI Flow<br/>Judge Validation]
     
-    PATNOTIFY --> FOLLOWUP[Follow-up Protocol<br/>Check patient response<br/>within 4 hours]
+    PATNOTIFY --> FOLLOWUP[Follow-up Protocol<br/>4h Check-in]
     PROVNOTIFY --> FOLLOWUP
     HIGHNOTIFY --> FOLLOWUP
     
-    FOLLOWUP --> METRICS[Track Metrics<br/>• Detection accuracy<br/>• False positive rate<br/>• Response times<br/>• Patient outcomes<br/>• Provider feedback]
+    FOLLOWUP --> METRICS[Track Metrics<br/>Accuracy & Response]
     
-    METRICS --> IMPROVE[Continuous Improvement<br/>• Update detection rules<br/>• Refine ML models<br/>• Adjust thresholds<br/>• Provider training]
+    METRICS --> IMPROVE[Improve System<br/>Update Models]
     
     style CRITICAL fill:#ff6666,stroke:#990000,stroke-width:4px
     style EMERGENCY fill:#ff9999,stroke:#cc0000,stroke-width:3px
