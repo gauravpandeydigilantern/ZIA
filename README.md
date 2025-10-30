@@ -130,7 +130,7 @@ graph TB
         
         PROMPT[Build Prompt<br/>System Instructions<br/>User Context]
         
-        GENERATE[Azure OpenAI API Call<br/>gpt-4-turbo<br/>Temperature: 0.3<br/>Max tokens: 1500]
+        GENERATE[Azure OpenAI API Call<br/>LLM Model<br/>Temperature: 0.3<br/>Max tokens: 1500]
         
         RESPONSE[AI Response Generated<br/>Natural language answer]
     end
@@ -155,7 +155,7 @@ graph TB
             
             BUILD[Build Judge Prompt<br/>Specialized evaluation<br/>instructions]
             
-            CALL[Azure OpenAI Judge<br/>gpt-4-turbo<br/>Temperature: 0.1<br/>Structured output]
+            CALL[Azure OpenAI Judge<br/>LLM Model<br/>Temperature: 0.1<br/>Structured output]
         end
         
         subgraph CriteriaEvaluation["5-Criteria Assessment"]
