@@ -48,9 +48,9 @@ graph TB
     
     subgraph AIServices["Azure OpenAI Service"]
         direction LR
-        PRIMARY[Primary AI<br/>gpt-4-turbo<br/>East US 2]
+        PRIMARY[Primary AI<br/>LLM Model<br/>East US 2]
         
-        JUDGEAI[Judge AI<br/>gpt-4-turbo<br/>West US 2]
+        JUDGEAI[Judge AI<br/>LLM Model<br/>West US 2]
         
         SPEECH[Speech Service<br/>Voice & Text]
     end
