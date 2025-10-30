@@ -811,5 +811,412 @@ The Admin Dashboard includes essential analytics for launch and early growth pha
 ---
 
 
+### Provider Role in ZIA System
+
+Providers serve as the **clinical oversight layer** for the ZIA AI Assistant:
+
+- **Escalation Review**: Review AI responses flagged by Judge system (score <60)
+- **Clinical Validation**: Approve AI-generated summaries
+- **Patient Care**: Direct communication when needed
+- **Emergency Response**: Immediate intervention for urgent cases
+
+```mermaid
+flowchart TD
+    A[Patient Query] --> B[AI Response]
+    B --> C[Judge Evaluation]
+    C --> D{Score?}
+    D -->|≥85 Pass| E[Send to Patient]
+    D -->|60-84 Revise| F[AI Revises]
+    D -->|<60 Escalate| G[Provider Review]
+    F --> C
+    G --> H[Provider Action]
+    H --> I[Resolution]
+```
+
+## 2. Provider Dashboard
+
+### Dashboard Access
+
+**URL:** `https://provider.zia-health.com`
+
+**Authentication:**
+- Azure AD B2C with MFA required
+- Session timeout: 30 minutes
+- HIPAA compliance required
+
+```mermaid
+flowchart LR
+    A[Provider Login] --> B[MFA Verification]
+    B --> C[Dashboard Access]
+    C --> D[Escalation Queue]
+    C --> E[Patient List]
+    C --> F[Analytics]
+```
+
+### Dashboard Layout
+
+**Key Metrics:**
+- Critical Cases (SLA: <2 hours)
+- High Priority (SLA: <24 hours)
+
+- Medium Priority (SLA: <1 week)
+
+**Quick Actions:**
+- View escalation queue
+- Search patients
+- Send messages
+- Schedule appointments
+- Generate reports
+
+---
+
+## 3. Escalation Management
+
+### Escalation Triggers
+
+Cases escalate to provider when:
+
+| Trigger | Condition | Priority |
+| --- | --- | --- |
+| Low Judge Score | Score <60 | HIGH |
+| Safety Concern | Safety <70 | CRITICAL |
+| Emergency Keywords | Red flags detected | CRITICAL |
+| Patient Request | Human review requested | MEDIUM |
+
+```mermaid
+flowchart TD
+    A[AI Response Generated] --> B{Judge Score}
+    B -->|≥85| C[Pass - Send to Patient]
+    B -->|60-84| D[Revise - Back to AI]
+    B -->|<60| E[Escalate to Provider]
+    E --> F{Priority Level}
+    F -->|Critical| G[SLA: <2 hours]
+    F -->|High| H[SLA: <24 hours]
+    F -->|Medium| I[SLA: <1 week]
+```
+
+### Provider Actions
+
+When reviewing escalated cases, provider can:
+
+1. **Approve & Send** - AI response is appropriate
+2. **Edit & Send** - Minor corrections needed
+3. **Write Custom Response** - Start from scratch
+4. **Call Patient** - Direct communication needed
+5. **Schedule Appointment** - In-person/telehealth visit
+6. **Emergency Protocol** - 911 or ER referral
+7. **Refer to Specialist** - Outside scope of care
+
+---
+
+## 4. Patient Communication
+
+### Communication Channels
+
+```mermaid
+flowchart LR
+    A[Provider] --> B[SMS Notification]
+    A --> C[Email]
+    A --> D[Teams Video Call]
+    A --> E[Phone Call]
+    B --> F[Patient]
+    C --> F
+    D --> F
+    E --> F
+```
+
+### Appointment Scheduling
+
+**Appointment Types:**
+- In-person visit
+- Microsoft Teams video consultation
+- Phone consultation
+
+**Process:**
+1. Select patient
+2. Choose appointment type
+3. Pick date/time slot
+4. Send confirmation to patient
+5. Calendar integration (automatic reminders)
+
+---
+
+## 5. Clinical Summaries
+
+### AI-Generated Summaries
+
+AI consolidates patient conversations into structured clinical summaries.
+
+```mermaid
+flowchart TD
+    A[Patient Conversation] --> B[AI Analyzes]
+    B --> C[Generate Summary]
+    C --> D[Provider Review]
+    D --> E{Validation}
+    E -->|Approve| F[Sign & Finalize]
+    E -->|Edit| G[Make Changes]
+    E -->|Reject| H[Regenerate]
+    G --> F
+    H --> C
+```
+
+### Summary Contents
+
+**Key Sections:**
+- Chief complaint
+- Symptoms overview
+- Medical history
+- Risk factors
+- Recommended actions
+- Follow-up plan
+- Provider clinical notes
+
+### Validation Actions
+
+Provider can:
+1. **Approve & Sign** - Summary is accurate
+2. **Edit Summary** - Make corrections/additions
+3. **Reject & Regenerate** - Request AI to recreate
+
+---
+
+## 6. Video Consultations
+
+### Microsoft Teams Integration
+
+**Purpose:** Provide secure, HIPAA-compliant video consultations directly within the ZIA platform using Microsoft Teams.
+
+```mermaid
+flowchart LR
+    A[Provider Dashboard] --> B[Schedule Teams Meeting]
+    B --> C[Patient Receives Link]
+    C --> D[Join Video Call]
+    D --> E[Consultation Session]
+    E --> F[Auto-Recorded]
+    F --> G[Transcript Added to Record]
+```
+
+### Teams Features
+
+**Integrated Capabilities:**
+- One-click meeting creation
+- HIPAA-compliant Microsoft 365 Healthcare
+- End-to-end encryption (E2EE)
+- Lobby for patient privacy
+- Screen sharing for education
+- Cloud recording (with patient consent)
+- Automatic transcription via Azure Speech Service
+- Meeting links sent via email/SMS
+- Integration with Outlook calendar
+
+### Video Consultation Workflow
+
+**Step 1: Schedule Teams Consultation**
+
+```
+Provider Dashboard → Select Patient → Schedule Appointment
+→ Choose "Microsoft Teams Video Consultation"
+→ Select date/time
+→ System generates Teams meeting link via Microsoft Graph API
+```
+
+**Step 2: Patient Notification**
+
+```
+Patient receives:
+- Email with Teams link
+- SMS reminder 24 hours before
+- SMS reminder 15 minutes before
+- Calendar invitation (.ics file)
+- "Join from browser" option (no app required)
+```
+
+**Step 3: Conduct Consultation**
+
+```
+Provider clicks "Start Meeting" → Teams opens in browser/app
+Patient clicks link → Enters lobby → Provider admits
+→ Video consultation begins
+→ Screen sharing available for education
+→ Chat for sharing links/resources
+```
+
+**Step 4: Post-Consultation**
+
+```
+System automatically:
+- Saves recording to Azure Blob Storage (HIPAA-compliant)
+- Generates transcript using Azure Speech Service
+- Adds transcript to patient record
+- Creates clinical note template
+- Logs consultation in audit trail
+- Stores in Microsoft Stream (secure)
+```
+
+### Teams Security & Compliance
+
+**HIPAA Compliance:**
+- Business Associate Agreement (BAA) with Microsoft
+- End-to-end 256-bit AES encryption
+- Microsoft 365 HIPAA-compliant configuration
+- Secure cloud recording in OneDrive for Business
+- No third-party access to PHI
+- Data residency controls (US data centers)
+
+**Privacy Controls:**
+- Lobby enabled by default
+- Anonymous join disabled
+- Encrypted chat logs
+- Participant authentication required
+- Screen sharing controls
+- Meeting recording consent
+
+```mermaid
+flowchart TD
+    A[ZIA Portal] --> B[Microsoft Graph API]
+    B --> C[Create Teams Meeting]
+    C --> D[Generate Link]
+    D --> E[Send to Patient]
+    E --> F[Video Session]
+    F --> G[Recording]
+    G --> H[Azure Storage]
+    H --> I[Patient Record]
+```
+
+### Teams API Configuration
+
+**Technical Setup:**
+- Microsoft Graph API integration
+- Azure AD OAuth 2.0 authentication
+- Teams meeting creation via REST API
+- Webhook for meeting events
+- Automatic recording upload to Azure
+- Calendar sync with provider schedules
+
+**Meeting Settings:**
+- Join before host: Disabled
+- Lobby: Enabled (patients wait for provider)
+- Participant video: On by default
+- Audio: Computer audio + dial-in option
+- Recording: Cloud recording (auto-start)
+- Transcript: Live captions + post-meeting transcript
+- Chat: Enabled (saved to record)
+- Screen sharing: Host only (provider control)
+
+**Browser Compatibility:**
+- Chrome, Edge, Safari, Firefox
+- No app download required for patients
+- Mobile app available (iOS/Android)
+- Supports desktop and mobile devices
+
+---
+
+## 7. EMR Export
+
+### Export Formats
+
+---
+
+## 7. EMR Export
+
+### Export Formats
+
+**Available Formats:**
+
+**Option 1: PDF Clinical Summary**
+- Human-readable format
+- Provider signature embedded
+- Practice letterhead
+- HIPAA-compliant footer
+
+**Option 2: CCD/CCDA (HL7 Standard)**
+- XML format compliant with HL7
+- Compatible with Epic, Cerner
+- Includes medications, allergies, problems
+
+```mermaid
+flowchart LR
+    A[Clinical Summary] --> B{Select Format}
+    B -->|PDF| C[Download PDF]
+    B -->|CCD/CCDA| D[HL7 XML]
+    B -->|FHIR| E[JSON Bundle]
+    C --> F[Send to EMR]
+    D --> F
+    E --> F
+```
+
+### Export Process
+
+1. Select patient summary
+2. Choose export format (PDF/CCD/FHIR)
+3. Preview document
+4. Approve for export
+5. Send to EMR or download
+
+**Audit Trail:**
+- All exports logged
+- Provider ID and timestamp recorded
+- 7-year retention for HIPAA compliance
+
+---
+
+## 8. Emergency Protocol
+
+### Emergency Detection
+
+```mermaid
+flowchart TD
+    A[Patient Message] --> B[AI Analysis]
+    B --> C{Emergency?}
+    C -->|Yes| D[Immediate Alert]
+    C -->|No| E[Normal Flow]
+    D --> F[Notify Provider]
+    D --> G[Alert Patient]
+    D --> H[Log Incident]
+    F --> I[Provider Action]
+```
+
+### Red Flag Keywords
+
+**Immediate Escalation Triggers:**
+- Severe chest pain, difficulty breathing
+- Heavy bleeding (>1 pad/hour)
+- Severe headache with vision changes
+- Suicidal thoughts, self-harm
+- Loss of consciousness
+- Severe abdominal pain
+
+### Provider Emergency Actions
+
+When emergency detected:
+
+1. **Immediate Notification**
+    - Dashboard red alert
+    - SMS to provider
+    - Push notification
+    - Email alert
+2. **Provider Response**
+    - Call patient immediately
+    - Provide 911 guidance
+    - Notify emergency contacts
+    - Document all actions
+3. **System Actions**
+    - Display emergency instructions to patient
+    - Log incident with timestamps
+    - Create incident report
+    - Notify on-call supervisor
+
+### Documentation
+
+All emergencies automatically logged:
+- Patient message (exact wording)
+- Symptoms identified
+- Provider actions taken
+- Patient outcome
+- Response times
+- 7-year retention for compliance
+
+---
+
 
 ---
