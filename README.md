@@ -6,113 +6,171 @@
 
 
 
-## 1. High-Level System Architecture
+## 1. System flow
 
 ```mermaid
-graph TB
-    subgraph Internet["Internet Layer"]
-        USERS[End Users<br/>Patients, Providers, Trainers]
+flowchart TB
+    subgraph UserLayer["👥 User Layer"]
+        PATIENT[Patient<br/>Web/Mobile App]
+        PROVIDER[Provider<br/>Dashboard]
+        TRAINER[Physician Trainer<br/>Portal]
+        ADMIN[Administrator<br/>Dashboard]
     end
-    
-    subgraph EdgeSecurity["Edge Security - Azure Front Door"]
-        FD[Azure Front Door<br/>Global Load Balancer]
-        WAF[Web Application Firewall<br/>DDoS Protection<br/>Bot Detection]
-        CDN[Content Delivery Network<br/>Static Assets<br/>Global Distribution]
+
+    subgraph SecurityLayer["🔒 Security & Authentication"]
+        FRONTDOOR[Azure Front Door<br/>WAF + DDoS Protection]
+        ADB2C[Azure AD B2C<br/>MFA + RBAC]
+        APIM[API Management<br/>Rate Limiting]
     end
-    
-    subgraph APILayer["API Gateway - Azure API Management"]
-        APIM[API Management<br/>Rate Limiting: 1000 req/min<br/>JWT Validation<br/>Request Routing]
-        OAUTH[OAuth 2.0 + OpenID<br/>Token Management]
+
+    subgraph CoreAppLayer["💬 Core Application Layer"]
+        CONV[Conversation Service<br/>Node.js]
+        JUDGE[Judge Service<br/>Python/FastAPI]
+        PROFILE[Profile Service<br/>Node.js]
+        CLINICAL[Clinical Service<br/>Node.js]
+        NOTIFY[Notification Service<br/>Node.js]
     end
-    
-    subgraph AuthLayer["Authentication - Azure AD B2C"]
-        ADB2C[Azure AD B2C<br/>Multi-Factor Auth<br/>Social Login<br/>Custom Policies]
-        RBAC[Role-Based Access Control<br/>Patient, Provider, Trainer, Admin]
+
+    subgraph AILayer["🤖 AI Services Layer"]
+        PRIMARYAI[Primary AI<br/>LLM Modal]
+        JUDGEAI[Judge AI<br/>LLM Modal]
+        SPEECH[Speech Service<br/>STT/TTS]
     end
-    
-    subgraph AppServices["Microservices - Azure App Service"]
-        direction TB
-        
-        subgraph CoreServices["Core Services"]
-            CONV[Conversation<br/>Node.js + Express]
-            JUDGE[Judge Validation<br/>Python + FastAPI]
-            PROFILE[Profile Service<br/>Node.js + Express]
+
+    subgraph DataLayer["💾 Data Layer"]
+        SQL[(SQL Database<br/>Profiles + Judge)]
+        COSMOS[(Cosmos DB<br/>Conversations)]
+        REDIS[(Redis Cache<br/>Tokens + Sessions)]
+        BLOB[Blob Storage<br/>Files + Audio]
+    end
+
+    subgraph WorkflowLayer["🔄 Workflow Processes"]
+        subgraph PatientFlow["Patient Journey"]
+            P1[Patient Login<br/>MFA Auth]
+            P2[Health Query<br/>Text/Voice]
+            P3[AI Response<br/>Generation]
+            P4[Judge Validation<br/>5-Criteria Check]
+            P5{Score Decision}
+            P6[Display Response]
+            P7[Save Conversation]
         end
-        
-        subgraph SupportServices["Support Services"]
-            CLINICAL[Clinical Service<br/>Node.js + Express]
-            TRAINING[Training Service<br/>Python + FastAPI]
-            NOTIFY[Notification<br/>Node.js + Express]
+
+        subgraph JudgeFlow["Judge Evaluation"]
+            J1[Intercept Response<br/>No Bypass]
+            J2[5-Criteria Assessment<br/>Safety/Accuracy/Privacy/Experience/Compliance]
+            J3[Weighted Scoring<br/>Pass≥85, Revise60-84, Escalate<60]
+            J4[Decision Routing]
+        end
+
+        subgraph ProviderFlow["Provider Workflow"]
+            PR1[Provider Login<br/>Dashboard]
+            PR2[Escalation Queue<br/>Priority Sorted]
+            PR3[Case Review<br/>Full Context]
+            PR4[Provider Actions<br/>Schedule/Call]
+            PR5[Clinical Summary<br/>Review & Validate]
+            PR6[EMR Export<br/>PDF/CCD/FHIR]
+        end
+
+        subgraph TrainingFlow["Training Loop"]
+            T1[Trainer Review<br/>Cases & Scenarios]
+            T2[Feedback & Corrections]
+            T3[System Updates<br/>Weights & Prompts]
+            T4[Model Improvement<br/>Continuous Learning]
         end
     end
-    
-    subgraph AIServices["Azure OpenAI Service"]
-        direction LR
-        PRIMARY[Primary AI<br/>LLM Model<br/>East US 2]
-        
-        JUDGEAI[Judge AI<br/>LLM Model<br/>West US 2]
-        
-        SPEECH[Speech Service<br/>Voice & Text]
+
+    subgraph EmergencyLayer["🚨 Emergency System"]
+        E1[Red Flag Detection<br/>Keywords + ML]
+        E2[Severity Assessment<br/>Critical/High/Medium]
+        E3[Multi-Channel Alert<br/>SMS/Email/Push]
+        E4[Provider Notification<br/>SLA: <2h Critical]
+        E5[Patient Safety<br/>911 Instructions]
     end
+
+    %% Main Flow Connections
+    PATIENT --> FRONTDOOR
+    PROVIDER --> FRONTDOOR
+    TRAINER --> FRONTDOOR
+    ADMIN --> FRONTDOOR
+
+    FRONTDOOR --> ADB2C
+    ADB2C --> APIM
+
+    APIM --> CONV
+    APIM --> JUDGE
+    APIM --> PROFILE
+    APIM --> CLINICAL
+
+    %% Patient Journey Flow
+    P1 --> P2 --> P3 --> J1
+    J1 --> J2 --> J3 --> J4
+    J4 --> P5
     
-    subgraph DataLayer["Data Persistence Layer"]
-        direction TB
-        
-        SQL[(SQL Database<br/>User Profiles<br/>Judge Data)]
-        
-        COSMOS[(Cosmos DB<br/>Conversations<br/>Chat History)]
-        
-        BLOB[Blob Storage<br/>Files & Documents]
-        
-        REDIS[(Redis Cache<br/>Sessions & Tokens)]
-    end
-    
-    subgraph SecurityCompliance["Security & Compliance"]
-        VAULT[Key Vault<br/>Secrets & Keys]
-        
-        MONITOR[Azure Monitor<br/>Logging & Alerts]
-        
-        SENTINEL[Sentinel<br/>Security & SIEM]
-    end
-    
-    USERS --> FD
-    FD --> WAF
-    FD --> CDN
-    WAF --> APIM
-    APIM --> OAUTH
-    OAUTH --> ADB2C
-    ADB2C --> RBAC
-    
-    RBAC --> CONV
-    RBAC --> JUDGE
-    RBAC --> PROFILE
-    RBAC --> CLINICAL
-    RBAC --> TRAINING
-    RBAC --> NOTIFY
-    
-    CONV --> PRIMARY
-    CONV --> SPEECH
+    P5 -->|Pass| P6
+    P5 -->|Revise| P3
+    P5 -->|Escalate| PR2
+
+    P6 --> P7
+
+    %% AI Connections
+    CONV --> PRIMARYAI
     JUDGE --> JUDGEAI
-    
+    CONV --> SPEECH
+
+    %% Data Connections
     CONV --> COSMOS
     CONV --> REDIS
-    JUDGE --> SQL
     PROFILE --> SQL
-    TRAINING --> SQL
-    CONV --> BLOB
+    JUDGE --> SQL
+    CLINICAL --> BLOB
+
+    %% Provider Workflow
+    PR1 --> PR2 --> PR3 --> PR4
+    PR3 --> PR5 --> PR6
+
+    %% Training Loop
+    PR4 --> T1
+    T1 --> T2 --> T3 --> T4
+    T4 -.->|Improves| JUDGEAI
+
+    %% Emergency Flow
+    P2 --> E1
+    E1 --> E2 --> E3
+    E3 --> E4
+    E3 --> E5
+
+    %% Emergency to Provider
+    E4 --> PR2
+
+    %% Styling
+    style PATIENT fill:#e3f2fd
+    style PROVIDER fill:#e8f5e8
+    style TRAINER fill:#fff3e0
+    style ADMIN fill:#fce4ec
     
-    CONV --> VAULT
-    JUDGE --> VAULT
-    CONV --> MONITOR
-    JUDGE --> MONITOR
-    MONITOR --> SENTINEL
+    style JUDGE fill:#ffebee
+    style JUDGEAI fill:#ffcdd2
+    style EmergencyLayer fill:#ffebee
     
-    JUDGE -.->|Validates Every Response| CONV
-    TRAINING -.->|Continuous Improvement| JUDGEAI
+    style PatientFlow fill:#e3f2fd
+    style JudgeFlow fill:#ffebee
+    style ProviderFlow fill:#e8f5e8
+    style TrainingFlow fill:#fff3e0
+
+    classDef patient fill:#e3f2fd,stroke:#1976d2
+    classDef provider fill:#e8f5e8,stroke:#388e3c
+    classDef trainer fill:#fff3e0,stroke:#f57c00
+    classDef admin fill:#fce4ec,stroke:#c2185b
+    classDef ai fill:#ffebee,stroke:#c62828
+    classDef security fill:#f3e5f5,stroke:#7b1fa2
     
-    style JUDGE fill:#ff6b6b,stroke:#c92a2a,stroke-width:4px
-    style JUDGEAI fill:#ffa94d,stroke:#fd7e14,stroke-width:4px
-    style TRAINING fill:#74c0fc,stroke:#1c7ed6,stroke-width:3px
+    class PATIENT patient;
+    class PROVIDER provider;
+    class TRAINER trainer;
+    class ADMIN admin;
+    class JUDGE,JUDGEAI ai;
+    class ADB2C,APIM security;
+
 ```
 
 ---
