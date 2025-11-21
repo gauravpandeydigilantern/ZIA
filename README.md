@@ -1,1222 +1,1042 @@
-# ZIA Women's Health AI Assistant
-##  Technical Documentation
 
+## 1. High-Level System & Data Flow Architecture
 
----
-
-
-
-## 1. System flow
-
-```mermaid
-flowchart TB
-    subgraph UserLayer["👥 User Layer"]
-        PATIENT[Patient<br/>Web/Mobile App]
-        PROVIDER[Provider<br/>Dashboard]
-        TRAINER[Physician Trainer<br/>Portal]
-        ADMIN[Administrator<br/>Dashboard]
-    end
-
-    subgraph SecurityLayer["🔒 Security & Authentication"]
-        FRONTDOOR[Azure Front Door<br/>WAF + DDoS Protection]
-        ADB2C[Azure AD B2C<br/>MFA + RBAC]
-        APIM[API Management<br/>Rate Limiting]
-    end
-
-    subgraph CoreAppLayer["💬 Core Application Layer"]
-        CONV[Conversation Service<br/>Node.js]
-        JUDGE[Judge Service<br/>Python/FastAPI]
-        PROFILE[Profile Service<br/>Node.js]
-        CLINICAL[Clinical Service<br/>Node.js]
-        NOTIFY[Notification Service<br/>Node.js]
-    end
-
-    subgraph AILayer["🤖 AI Services Layer"]
-        PRIMARYAI[Primary AI<br/>LLM Modal]
-        JUDGEAI[Judge AI<br/>LLM Modal]
-        SPEECH[Speech Service<br/>STT/TTS]
-    end
-
-    subgraph DataLayer["💾 Data Layer"]
-        SQL[(SQL Database<br/>Profiles + Judge)]
-        COSMOS[(Cosmos DB<br/>Conversations)]
-        REDIS[(Redis Cache<br/>Tokens + Sessions)]
-        BLOB[Blob Storage<br/>Files + Audio]
-    end
-
-    subgraph WorkflowLayer["🔄 Workflow Processes"]
-        subgraph PatientFlow["Patient Journey"]
-            P1[Patient Login<br/>MFA Auth]
-            P2[Health Query<br/>Text/Voice]
-            P3[AI Response<br/>Generation]
-            P4[Judge Validation<br/>5-Criteria Check]
-            P5{Score Decision}
-            P6[Display Response]
-            P7[Save Conversation]
-        end
-
-        subgraph JudgeFlow["Judge Evaluation"]
-            J1[Intercept Response<br/>No Bypass]
-            J2[5-Criteria Assessment<br/>Safety/Accuracy/Privacy/Experience/Compliance]
-            J3[Weighted Scoring<br/>Pass≥85, Revise60-84, Escalate<60]
-            J4[Decision Routing]
-        end
-
-        subgraph ProviderFlow["Provider Workflow"]
-            PR1[Provider Login<br/>Dashboard]
-            PR2[Escalation Queue<br/>Priority Sorted]
-            PR3[Case Review<br/>Full Context]
-            PR4[Provider Actions<br/>Schedule/Call]
-            PR5[Clinical Summary<br/>Review & Validate]
-            PR6[EMR Export<br/>PDF/CCD/FHIR]
-        end
-
-        subgraph TrainingFlow["Training Loop"]
-            T1[Trainer Review<br/>Cases & Scenarios]
-            T2[Feedback & Corrections]
-            T3[System Updates<br/>Weights & Prompts]
-            T4[Model Improvement<br/>Continuous Learning]
-        end
-    end
-
-    subgraph EmergencyLayer["🚨 Emergency System"]
-        E1[Red Flag Detection<br/>Keywords + ML]
-        E2[Severity Assessment<br/>Critical/High/Medium]
-        E3[Multi-Channel Alert<br/>SMS/Email/Push]
-        E4[Provider Notification<br/>SLA: <2h Critical]
-        E5[Patient Safety<br/>911 Instructions]
-    end
-
-    %% Main Flow Connections
-    PATIENT --> FRONTDOOR
-    PROVIDER --> FRONTDOOR
-    TRAINER --> FRONTDOOR
-    ADMIN --> FRONTDOOR
-
-    FRONTDOOR --> ADB2C
-    ADB2C --> APIM
-
-    APIM --> CONV
-    APIM --> JUDGE
-    APIM --> PROFILE
-    APIM --> CLINICAL
-
-    %% Patient Journey Flow
-    P1 --> P2 --> P3 --> J1
-    J1 --> J2 --> J3 --> J4
-    J4 --> P5
-    
-    P5 -->|Pass| P6
-    P5 -->|Revise| P3
-    P5 -->|Escalate| PR2
-
-    P6 --> P7
-
-    %% AI Connections
-    CONV --> PRIMARYAI
-    JUDGE --> JUDGEAI
-    CONV --> SPEECH
-
-    %% Data Connections
-    CONV --> COSMOS
-    CONV --> REDIS
-    PROFILE --> SQL
-    JUDGE --> SQL
-    CLINICAL --> BLOB
-
-    %% Provider Workflow
-    PR1 --> PR2 --> PR3 --> PR4
-    PR3 --> PR5 --> PR6
-
-    %% Training Loop
-    PR4 --> T1
-    T1 --> T2 --> T3 --> T4
-    T4 -.->|Improves| JUDGEAI
-
-    %% Emergency Flow
-    P2 --> E1
-    E1 --> E2 --> E3
-    E3 --> E4
-    E3 --> E5
-
-    %% Emergency to Provider
-    E4 --> PR2
-
-    %% Styling
-    style PATIENT fill:#e3f2fd
-    style PROVIDER fill:#e8f5e8
-    style TRAINER fill:#fff3e0
-    style ADMIN fill:#fce4ec
-    
-    style JUDGE fill:#ffebee
-    style JUDGEAI fill:#ffcdd2
-    style EmergencyLayer fill:#ffebee
-    
-    style PatientFlow fill:#e3f2fd
-    style JudgeFlow fill:#ffebee
-    style ProviderFlow fill:#e8f5e8
-    style TrainingFlow fill:#fff3e0
-
-    classDef patient fill:#e3f2fd,stroke:#1976d2
-    classDef provider fill:#e8f5e8,stroke:#388e3c
-    classDef trainer fill:#fff3e0,stroke:#f57c00
-    classDef admin fill:#fce4ec,stroke:#c2185b
-    classDef ai fill:#ffebee,stroke:#c62828
-    classDef security fill:#f3e5f5,stroke:#7b1fa2
-    
-    class PATIENT patient;
-    class PROVIDER provider;
-    class TRAINER trainer;
-    class ADMIN admin;
-    class JUDGE,JUDGEAI ai;
-    class ADB2C,APIM security;
-
-```
-
----
-
-## 2. LLM-as-a-Judge Quality Validation System - Detailed Architecture
+This diagram illustrates the complete end-to-end data flow, showing how users interact with the platform and how data moves between the frontend, backend services, AI layer, and external integrations.
 
 ```mermaid
 graph TB
-    subgraph PatientInteraction["Patient Interaction"]
-        INPUT[Patient Question<br/>Text or Voice]
+    %% User Layers
+    subgraph UserLayer[User Layer]
+        direction TB
+        PAT[Patient]
+        PROV[Provider]
+        ADM[Admin]
+        TRN[Trainer]
     end
-    
-    subgraph PrimaryAI["Primary AI Processing"]
-        CONTEXT[Load Context<br/>User Profile<br/>Medical History]
+
+    %% Frontend Layer
+    subgraph FrontendLayer[Frontend Layer]
+        direction TB
+        WEB[Web Application<br/>React/TypeScript]
+        MOB[Mobile App<br/>React Native]
         
-        PROMPT[Build Prompt<br/>System Instructions<br/>User Context]
+        subgraph WebModules[Web Modules]
+            PAT_WEB[Patient Portal]
+            PROV_WEB[Provider Dashboard]
+            ADM_WEB[Admin Dashboard]
+            TRN_WEB[Training Portal]
+        end
         
-        GENERATE[Azure OpenAI API Call<br/>LLM Model<br/>Temperature: 0.3<br/>Max tokens: 1500]
-        
-        RESPONSE[AI Response Generated<br/>Natural language answer]
+        subgraph MobileModules[Mobile Modules]
+            PAT_MOB[Patient App]
+            CHAT_MOB[Chat Interface]
+            HEALTH_MOB[Health Tracking]
+        end
     end
-    
-    subgraph MandatoryGate["MANDATORY VALIDATION GATE"]
-        INTERCEPT[Response Interceptor<br/>NO BYPASS POSSIBLE<br/>100% Coverage]
+
+    %% API Gateway Layer
+    subgraph APIGatewayLayer[API Gateway Layer]
+        GW[Azure API Gateway<br/>Load Balancing & Routing]
     end
-    
-    subgraph JudgeSystem["JUDGE VALIDATION SERVICE"]
 
-
-
-
-
-
+    %% Backend Services Layer
+    subgraph BackendLayer[Backend Services Layer]
         direction TB
         
-        JUDGEAPI[Judge API Endpoint<br/>POST /api/judge/evaluate]
-        
-        subgraph EvaluationEngine["Evaluation Engine"]
-            PARSE[Parse Request<br/>Query & Response<br/>Context Analysis]
-            
-            BUILD[Build Judge Prompt<br/>Specialized evaluation<br/>instructions]
-            
-            CALL[Azure OpenAI Judge<br/>LLM Model<br/>Temperature: 0.1<br/>Structured output]
+        subgraph CoreServices[Core Services]
+            AUTH[Authentication Service<br/>Azure AD B2C]
+            CHAT[Chat Service<br/>Real-time Communication]
+            JUDGE[Judge AI Service<br/>Response Validation]
+            RAG[RAG Service<br/>Knowledge Retrieval]
+            NOTIF[Notification Service<br/>Email/SMS/Push]
         end
         
-        subgraph CriteriaEvaluation["5-Criteria Assessment"]
-            SAFETY[Safety<br/>30%]
-            ACCURACY[Accuracy<br/>25%]
-            PRIVACY[Privacy<br/>20%]
-            TONE[Experience<br/>15%]
-            COMPLIANCE[Compliance<br/>10%]
+        subgraph BusinessServices[Business Services]
+            PAT_SVC[Patient Service<br/>Profiles & Onboarding]
+            PROV_SVC[Provider Service<br/>Case Management]
+            EMER[Emergency Service<br/>Red Flag Detection]
+            PAY[Payment Service<br/>Stripe Integration]
+            EMR[EMR Service<br/>Health Data]
         end
         
-        subgraph Scoring["Scoring & Decision"]
-            CALCULATE[Calculate Overall Score<br/>Weighted average<br/>Score = Sum of criteria x weight]
-            
-            THRESHOLD{Decision Logic<br/>Score Analysis}
-            
-            PASS[PASS<br/>Score ≥ 85<br/>Approved for display]
-            
-            REVISE[REVISE<br/>Score 60-84<br/>Needs improvement]
-            
-            ESCALATE[ESCALATE<br/>Score < 60<br/>Human review required]
+        subgraph AIServices[AI Services]
+            OPENAI[Azure OpenAI<br/>Primary LLM]
+            STT[Speech-to-Text<br/>Azure Cognitive]
+            TTS[Text-to-Speech<br/>Azure Cognitive]
+        end
+    end
+
+    %% Data Layer
+    subgraph DataLayer[Data Layer]
+        direction TB
+        
+        subgraph Databases[Databases]
+            SQL[Azure SQL DB<br/>Structured Data]
+            COSMOS[Cosmos DB<br/>Conversations & Sessions]
+            SEARCH[Azure Cognitive Search<br/>Vector Search]
         end
         
-        AUDIT[Audit Logger<br/>Evaluation Record<br/>7-year Retention]
+        subgraph Storage[Storage]
+            BLOB[Azure Blob Storage<br/>Files & Images]
+            KEYVAULT[Azure Key Vault<br/>Secrets & Keys]
+        end
+        
+        subgraph ExternalData[External Data]
+            FHIR[FHIR Server<br/>EMR Integration]
+            MAPS[Maps API<br/>Location Services]
+            HEALTH[Health APIs<br/>Apple HealthKit/Google Fit]
+        end
     end
-    
-    subgraph Outcomes["Decision Outcomes"]
-        DISPLAY[Display to Patient<br/>Response approved<br/>Conversation continues]
-        
-        RETRY[Return to Primary AI<br/>With specific feedback<br/>Max 3 attempts]
-        
-        QUEUE[Escalation Queue<br/>Provider notification<br/>Trainer review<br/>Patient informed]
+
+    %% External Services Layer
+    subgraph ExternalLayer[External Services]
+        direction TB
+        TWILIO[Twilio<br/>SMS & Voice]
+        STRIPE[Stripe<br/>Payments]
+        TEAMS[Microsoft Teams<br/>Telehealth]
+        EMR_APIS[EMR Systems<br/>Epic/Cerner/Athena]
     end
-    
-    subgraph TrainingLoop["Training & Improvement"]
-        TRAINQUEUE[Training Review Queue<br/>Remote medical professionals]
-        
-        REVIEW[Physician Review<br/>• Validate decision<br/>• Provide corrections<br/>• Flag issues]
-        
-        FEEDBACK[Feedback Collection<br/>• Correct answers<br/>• Reasoning<br/>• Edge cases]
-        
-        IMPROVE[Model Improvement<br/>• Update prompts<br/>• Adjust weights<br/>• Refine rules]
+
+    %% Security & Monitoring Layer
+    subgraph SecurityLayer[Security & Monitoring]
+        direction TB
+        AUDIT[Audit Logging<br/>HIPAA Compliance]
+        MONITOR[System Monitoring<br/>Performance Metrics]
+        ENCRYPT[Encryption<br/>TLS 1.3 & AES-256]
+        BACKUP[Backup & Recovery<br/>7-year Retention]
     end
-    
-    INPUT --> CONTEXT
-    CONTEXT --> PROMPT
-    PROMPT --> GENERATE
-    GENERATE --> RESPONSE
-    RESPONSE --> INTERCEPT
-    
-    INTERCEPT --> JUDGEAPI
-    JUDGEAPI --> PARSE
-    PARSE --> BUILD
-    BUILD --> CALL
-    
-    CALL --> SAFETY
-    CALL --> ACCURACY
-    CALL --> PRIVACY
-    CALL --> TONE
-    CALL --> COMPLIANCE
-    
-    SAFETY --> CALCULATE
-    ACCURACY --> CALCULATE
-    PRIVACY --> CALCULATE
-    TONE --> CALCULATE
-    COMPLIANCE --> CALCULATE
-    
-    CALCULATE --> THRESHOLD
-    CALCULATE --> AUDIT
-    
-    THRESHOLD -->|≥85| PASS
-    THRESHOLD -->|60-84| REVISE
-    THRESHOLD -->|<60| ESCALATE
-    
-    PASS --> DISPLAY
-    REVISE --> RETRY
-    RETRY --> PROMPT
-    ESCALATE --> QUEUE
-    
-    QUEUE --> TRAINQUEUE
-    TRAINQUEUE --> REVIEW
-    REVIEW --> FEEDBACK
-    FEEDBACK --> IMPROVE
-    IMPROVE -.->|Continuous Learning| BUILD
-    
-    style INTERCEPT fill:#ff6b6b,stroke:#c92a2a,stroke-width:4px
-    style JudgeSystem fill:#fff5f5,stroke:#ff6b6b,stroke-width:3px
-    style SAFETY fill:#ffe3e3,stroke:#ff6b6b,stroke-width:2px
-    style ACCURACY fill:#e3fafc,stroke:#1098ad,stroke-width:2px
-    style PRIVACY fill:#d0ebff,stroke:#1971c2,stroke-width:2px
-    style ESCALATE fill:#ffe3e3,stroke:#ff6b6b,stroke-width:2px
-    style TRAINQUEUE fill:#d0ebff,stroke:#1971c2,stroke-width:2px
-```
 
----
+    %% Connections
+    UserLayer --> FrontendLayer
+    FrontendLayer --> APIGatewayLayer
+    APIGatewayLayer --> BackendLayer
+    BackendLayer --> DataLayer
+    BackendLayer --> ExternalLayer
+    BackendLayer -.-> SecurityLayer
+    
+    %% Internal Connections
+    AUTH --> SQL
+    CHAT --> COSMOS
+    JUDGE --> SEARCH
+    RAG --> SEARCH
+    PAT_SVC --> SQL
+    PROV_SVC --> SQL
+    EMER --> BLOB
+    PAY --> KEYVAULT
+    
+    %% AI Connections
+    CHAT --> OPENAI
+    CHAT --> STT
+    CHAT --> TTS
+    JUDGE --> OPENAI
+    
+    %% External Integrations
+    NOTIF --> TWILIO
+    PAY --> STRIPE
+    PROV_SVC --> TEAMS
+    EMR --> EMR_APIS
+    EMR --> FHIR
+    
+    %% Security Connections
+    AUTH --> ENCRYPT
+    AUDIT --> SQL
+    MONITOR --> COSMOS
 
-## 3. Judge Evaluation Criteria - Detailed Breakdown
-
-### Configurable Rubric System
-
-The Judge evaluation system uses a configurable rubric-based scoring framework that can be adjusted by administrators and medical trainers without code changes.
-
-**Configuration Parameters:**
-- **Criteria Weights**: Adjustable percentage allocation (must sum to 100%)
-- **Score Thresholds**: Configurable pass/revise/escalate boundaries
-- **Sub-criteria Rules**: Enable/disable specific evaluation checks
-- **Domain-Specific Rules**: Custom medical guideline enforcement
-
-**Default Configuration (MVP):**
-- Safety: 30% weight, minimum score 85
-- Accuracy: 25% weight, minimum score 80
-- Privacy: 20% weight, minimum score 90
-- Experience: 15% weight, minimum score 75
-- Compliance: 10% weight, minimum score 85
-- Overall thresholds: Pass ≥85, Revise 60-84, Escalate <60
-- Maximum retry attempts: 3
-
-```mermaid
-graph TB
-    subgraph SafetyCriteria["Safety Evaluation - 30%"]
-        S1[Harmful Content<br/>Detection]
-        S2[Emergency<br/>Recognition]
-        S3[Triage<br/>Accuracy]
-        S4[Medical<br/>Contraindications]
-        S5[Scope<br/>Boundaries]
-    end
+    %% Styling
+    classDef userClass fill:#e1f5fe
+    classDef frontendClass fill:#f3e5f5
+    classDef backendClass fill:#e8f5e8
+    classDef dataClass fill:#fff3e0
+    classDef externalClass fill:#ffebee
+    classDef securityClass fill:#fce4ec
     
-    subgraph AccuracyCriteria["Accuracy Validation - 25%"]
-        A1[Guideline<br/>Alignment]
-        A2[Fact<br/>Verification]
-        A3[Evidence<br/>Based]
-        A4[Clinical<br/>Consistency]
-    end
-    
-    subgraph PrivacyCriteria["Privacy Protection - 20%"]
-        P1[PHI<br/>Detection]
-        P2[Data<br/>Minimization]
-        P3[Consent<br/>Validation]
-        P4[Anonymization<br/>Check]
-    end
-    
-    subgraph ToneCriteria["Experience - 15%"]
-        T1[Empathy<br/>Assessment]
-        T2[Professional<br/>Standards]
-        T3[Cultural<br/>Sensitivity]
-        T4[Language<br/>Clarity]
-        T5[User Experience<br/>Quality]
-    end
-    
-    subgraph ComplianceCriteria["Compliance - 10%"]
-        C1[Regulatory<br/>Adherence]
-        C2[Liability<br/>Management]
-        C3[Professional<br/>Referrals]
-    end
-    
-    S1 --> SCORE1[Safety Score<br/>0-100]
-    S2 --> SCORE1
-    S3 --> SCORE1
-    S4 --> SCORE1
-    S5 --> SCORE1
-    
-    A1 --> SCORE2[Accuracy Score<br/>0-100]
-    A2 --> SCORE2
-    A3 --> SCORE2
-    A4 --> SCORE2
-    
-    P1 --> SCORE3[Privacy Score<br/>0-100]
-    P2 --> SCORE3
-    P3 --> SCORE3
-    P4 --> SCORE3
-    
-    T1 --> SCORE4[Experience Score<br/>0-100]
-    T2 --> SCORE4
-    T3 --> SCORE4
-    T4 --> SCORE4
-    T5 --> SCORE4
-    
-    C1 --> SCORE5[Compliance Score<br/>0-100]
-    C2 --> SCORE5
-    C3 --> SCORE5
-    
-    SCORE1 -->|× Weight| FINAL[Overall Score<br/>Weighted Average<br/>Configurable Thresholds]
-    SCORE2 -->|× Weight| FINAL
-    SCORE3 -->|× Weight| FINAL
-    SCORE4 -->|× Weight| FINAL
-    SCORE5 -->|× Weight| FINAL
-    
-    style SafetyCriteria fill:#ffe3e3,stroke:#ff6b6b,stroke-width:2px
-    style AccuracyCriteria fill:#e3fafc,stroke:#1098ad,stroke-width:2px
-    style PrivacyCriteria fill:#d0ebff,stroke:#1971c2,stroke-width:2px
-    style ToneCriteria fill:#e7f5ff,stroke:#4c6ef5,stroke-width:2px
-    style ComplianceCriteria fill:#f3f0ff,stroke:#7950f2,stroke-width:2px
-    style FINAL fill:#fff5f5,stroke:#ff6b6b,stroke-width:3px
-```
-
-**Admin Configuration Interface:**
-Administrators can adjust rubric weights and thresholds through the Admin Dashboard → System Configuration → Judge Settings without requiring code deployment.
-
----
-
-## 3.1 Patient Demographics & Profile Structure
-
-The Profile Service manages comprehensive patient information required for personalized AI responses and clinical context.
-
-### Core Patient Profile Categories
-
-**1. Demographics**
-- Name, date of birth, age, preferred name, pronouns
-- Language preference, timezone
-- Contact information (encrypted)
-
-**2. Contact Information**
-- Email and phone (encrypted)
-- Emergency contact details with relationship
-
-**3. Medical History**
-- Chronic and acute conditions with diagnosis dates
-- Medication allergies with severity levels
-- Current and past medications with dosages
-- Surgical history
-- Family medical history
-
-**4. Reproductive Health**
-- Menstrual cycle tracking (last period, cycle length, symptoms)
-- Pregnancy status and history
-- Contraception methods
-- Complications and risk factors
-
-**5. Lifestyle Factors**
-- Exercise frequency and type
-- Dietary preferences and restrictions
-- Smoking and alcohol consumption
-- Sleep patterns and stress levels
-- Occupation and work environment
-
-**6. Communication Preferences**
-- Preferred interaction mode (chat, voice, or both)
-- Notification settings (email, SMS, push)
-- Appointment reminder preferences
-- Privacy level settings
-
-**7. Clinical Metrics**
-- Height, weight, BMI (auto-calculated)
-- Blood type and vital signs history
-- Recent measurements with timestamps
-
-**8. Insurance Information**
-- Provider name and policy details (encrypted)
-- Coverage dates and status
-
-**9. Consent Records**
-- HIPAA consent with timestamp and IP address
-- Data sharing permissions (providers, research)
-- Consent modification history
-
-**10. Account Metadata**
-- Account creation date
-- Last login timestamp
-- Profile completeness percentage
-- User tier level (free, premium, enterprise)
-
-### Data Security & Privacy
-- **Encryption**: All PHI fields encrypted at rest using AES-256
-- **Access Control**: Field-level RBAC - patients see all, providers see clinical subset
-- **Audit Trail**: All profile access logged with timestamp and accessor ID
-- **Data Retention**: Configurable per jurisdiction (default 7 years post-last activity)
-- **Right to Erasure**: GDPR-compliant deletion with audit log preservation
-
----
-
-## 4. Physician Training Portal - Detailed Workflow
-
-```mermaid
-graph TB
-    subgraph TrainerAccess["Physician Training Portal Access"]
-        LOGIN[Trainer Login<br/>MFA Required]
-        
-        DASH[Training Dashboard<br/>Review & Metrics]
-    end
-    
-    subgraph ReviewQueue["Review Queue Management"]
-        QUEUE[Review Queue<br/>Priority-based sorting]
-        
-        CRITICAL[Critical Priority<br/>Safety Issues<br/>Immediate Review]
-        
-        HIGH[High Priority<br/>Accuracy Issues<br/>24h Review]
-        
-        MEDIUM[Medium Priority<br/>Quality Checks<br/>Weekly Review]
-        
-        ROUTINE[Routine Review<br/>Training Samples<br/>Ongoing]
-    end
-    
-    subgraph CaseReview["Case Review Interface"]
-        SELECT[Select Case<br/>From Queue]
-        
-        DETAILS[View Details<br/>Patient Query<br/>AI Response<br/>Judge Scores]
-        
-        COMPARE[Compare Against<br/>Guidelines<br/>Best Practices]
-    end
-    
-    subgraph TrainerActions["Trainer Actions"]
-        ACTION{Trainer Decision}
-        
-        APPROVE[Approve<br/>Decision Correct]
-        
-        CORRECT[Provide Correction<br/>Better Response]
-        
-        FLAG[Flag Issue<br/>Escalate Admin]
-        
-        COMMENT[Add Comments<br/>Feedback Notes]
-    end
-    
-    subgraph Compensation["Compensation System"]
-        TRACK[Track Contributions<br/>Compensation system]
-        
-        COUNT[Count Reviews<br/>Cases & Quality]
-        
-        CALCULATE[Calculate Payment<br/>Rates & Bonuses]
-        
-        PAYOUT[Process Payout<br/>Monthly Transfer]
-    end
-    
-    subgraph TestingScenarios["Testing & Validation"]
-        SCENARIOS[Test Scenarios<br/>Safety & Accuracy]
-        
-        RUNTEST[Run Tests<br/>AI vs Expected]
-        
-        RESULTS[View Results<br/>Pass/Fail Status]
-        
-        ADJUST[Adjust Config<br/>Weights & Rules]
-    end
-    
-    subgraph ImprovementLoop["Continuous Improvement"]
-        AGGREGATE[Aggregate Feedback<br/>Patterns & Issues]
-        
-        ANALYZE[Analyze Trends<br/>Performance Gaps]
-        
-        UPDATE[Update System<br/>Prompts & Criteria]
-        
-        DEPLOY[Deploy Updates<br/>A/B Testing]
-    end
-    
-    LOGIN --> DASH
-    DASH --> QUEUE
-    
-    QUEUE --> CRITICAL
-    QUEUE --> HIGH
-    QUEUE --> MEDIUM
-    QUEUE --> ROUTINE
-    
-    CRITICAL --> SELECT
-    HIGH --> SELECT
-    MEDIUM --> SELECT
-    ROUTINE --> SELECT
-    
-    SELECT --> DETAILS
-    DETAILS --> COMPARE
-    COMPARE --> ACTION
-    
-    ACTION --> APPROVE
-    ACTION --> CORRECT
-    ACTION --> FLAG
-    ACTION --> COMMENT
-    
-    APPROVE --> TRACK
-    CORRECT --> TRACK
-    FLAG --> TRACK
-    COMMENT --> TRACK
-    
-    TRACK --> COUNT
-    COUNT --> CALCULATE
-    CALCULATE --> PAYOUT
-    
-    DASH --> SCENARIOS
-    SCENARIOS --> RUNTEST
-    RUNTEST --> RESULTS
-    RESULTS --> ADJUST
-    
-    APPROVE --> AGGREGATE
-    CORRECT --> AGGREGATE
-    FLAG --> AGGREGATE
-    
-    AGGREGATE --> ANALYZE
-    ANALYZE --> UPDATE
-    UPDATE --> DEPLOY
-    DEPLOY -.->|Improved System| QUEUE
-    
-    style CRITICAL fill:#ffe3e3,stroke:#ff6b6b,stroke-width:2px
-    style FLAG fill:#ffe3e3,stroke:#ff6b6b,stroke-width:2px
-    style TRACK fill:#d0ebff,stroke:#1971c2,stroke-width:2px
-    style PAYOUT fill:#d3f9d8,stroke:#2f9e44,stroke-width:2px
-    style UPDATE fill:#fff3bf,stroke:#f59f00,stroke-width:2px
-```
-
----
-
-## 5. Complete Patient Journey with Judge Integration
-
-```mermaid
-sequenceDiagram
-    autonumber
-    
-    participant P as Patient<br/>(Mobile/Web)
-    participant UI as React UI
-    participant API as API Gateway
-    participant AUTH as Auth Service
-    participant CONV as Conversation<br/>Service
-    participant REDIS as Redis Cache<br/>(Token Check)
-    participant AI as Primary AI<br/>(Azure OpenAI)
-    participant JUDGE as Judge Validation<br/>Service
-    participant JAI as Judge AI<br/>(Azure OpenAI)
-    participant DB as Database<br/>(SQL + Cosmos)
-    participant TRAIN as Training<br/>Portal
-    
-    P->>UI: Opens app
-    UI->>API: Request authentication
-    API->>AUTH: Validate credentials
-    AUTH->>AUTH: Check MFA
-    AUTH-->>UI: JWT token
-    
-    P->>UI: Types health question
-    UI->>API: POST /conversations/message
-    API->>AUTH: Validate JWT
-    AUTH-->>API: Token valid
-    
-    API->>REDIS: Check token limit
-    REDIS-->>API: Tokens available
-    
-    API->>CONV: Forward message
-    CONV->>DB: Load user context
-    DB-->>CONV: Profile + history
-    
-    CONV->>AI: Generate response
-    Note over AI: Temperature: 0.3<br/>Max tokens: 1500
-    AI-->>CONV: AI response text
-    
-    Note over CONV,JUDGE: MANDATORY VALIDATION<br/>NO BYPASS ALLOWED
-    
-    CONV->>JUDGE: POST /judge/evaluate
-    Note over JUDGE: Request includes:<br/>• Original query<br/>• AI response<br/>• User context<br/>• Urgency level
-    
-    JUDGE->>JAI: Evaluate response
-    Note over JAI: 5 Criteria Assessment:<br/>Safety 30%<br/>Accuracy 25%<br/>Privacy 20%<br/>Experience 15%<br/>Compliance 10%
-    
-    JAI-->>JUDGE: Evaluation results
-    JUDGE->>JUDGE: Calculate overall score
-    JUDGE->>DB: Save evaluation record
-    
-    alt Score ≥ 85 (PASS)
-        JUDGE-->>CONV: Approved
-        CONV->>DB: Save conversation
-        CONV->>REDIS: Deduct tokens
-        CONV-->>API: Response approved
-        API-->>UI: Display message
-        UI-->>P: Show AI response
-        JUDGE->>TRAIN: Log for training review
-        
-    else Score 60-84 (REVISE)
-        JUDGE-->>CONV: Needs revision
-        Note over CONV: Feedback:<br/>• Specific issues<br/>• Improvement areas<br/>• Retry guidance
-        CONV->>AI: Regenerate with feedback
-        AI-->>CONV: Revised response
-        Note over CONV: Retry up to 3 times
-        CONV->>JUDGE: Re-evaluate
-        
-    else Score < 60 (ESCALATE)
-        JUDGE-->>CONV: Escalated
-        JUDGE->>DB: Create escalation record
-        JUDGE->>TRAIN: Add to review queue
-        TRAIN->>TRAIN: Notify physician trainers
-        CONV-->>API: Escalation message
-        API-->>UI: Provider response message
-        UI-->>P: "A provider will respond<br/>within 2 hours"
-    end
+    class PAT,PROV,ADM,TRN userClass
+    class WEB,MOB,WebModules,MobileModules frontendClass
+    class CoreServices,BusinessServices,AIServices backendClass
+    class Databases,Storage,ExternalData dataClass
+    class ExternalLayer externalClass
+    class SecurityLayer securityClass
 ```
 
 
----
-## 6. Admin Dashboard & System Management
+## 2. Core AI & Data Processing Flows
 
-```mermaid
-graph TB
-    ADMIN[Administrator Login<br/>Super Admin Role] --> DASH[Admin Dashboard<br/>System Control Center]
-    
-    DASH --> USERS[👥 User Management]
-    DASH --> SYSTEM[🖥️ System Monitoring]
-    DASH --> AUDIT[Audit Logs & Compliance]
-    DASH --> ANALYTICS[Platform Analytics]
-    DASH --> CONTENT[📝 Content Management]
-    DASH --> CONFIG[System Configuration]
-    
-    USERS --> USERMGMT[User Administration<br/>• Create/delete users<br/>• Assign roles<br/>• Bulk import CSV<br/>• Status management<br/>• Password reset]
-    
-    USERMGMT --> ROLEMGMT[Role Management<br/>Patient, Provider,<br/>Trainer, Admin roles]
-    
-    SYSTEM --> HEALTH[System Health Dashboard<br/>• API response times<br/>• Database performance<br/>• AI service status<br/>• Error rates<br/>• Resource utilization<br/>• Queue depths]
-    
-    HEALTH --> SERVICES[Service Status<br/>• Conversation Service<br/>• Judge Service<br/>• Profile Service<br/>• Clinical Service<br/>• Training Service<br/>• Notification Service]
-    
-    SERVICES --> AIHEALTH[AI Service Health<br/>• Primary AI latency<br/>• Judge AI latency<br/>• Token usage<br/>• Rate limits<br/>• Error rates]
-    
-    AUDIT --> LOGS[Audit Log Viewer<br/>• User authentication<br/>• Data access events<br/>• Configuration changes<br/>• API calls<br/>• System modifications]
-    
-    LOGS --> SEARCH[Advanced Search & Filter<br/>• Date range<br/>• User filter<br/>• Action type<br/>• Resource type<br/>• IP address]
-    
-    SEARCH --> EXPORTAUDIT[Export Audit Logs<br/>• PDF reports<br/>• CSV export<br/>• JSON format<br/>• HIPAA compliance package]
-    
-    ANALYTICS --> METRICS[Platform Metrics<br/>• Total users<br/>• Active users<br/>• Conversation volume<br/>• Feature usage<br/>• Judge performance<br/>• Escalation rates]
-    
-    METRICS --> REPORTS[Generate Reports<br/>• Daily/Weekly/Monthly<br/>• Custom date range<br/>• Automated delivery<br/>• Executive summary]
-    
-    CONTENT --> MANAGE[Content Management<br/>• Message templates<br/>• Educational content<br/>• System messages<br/>• FAQ database<br/>• Email templates<br/>• Localization strings]
-    
-    MANAGE --> APPROVAL[Content Approval Workflow<br/>Medical review required]
-    
-    CONFIG --> SETTINGS[System Settings<br/>• Feature flags<br/>• Rate limits<br/>• Token allocations<br/>• Judge thresholds<br/>• Email/SMS providers<br/>• Integration keys]
-    
-    SETTINGS --> FEATURES[Feature Flags<br/>• Enable/disable features<br/>• A/B testing<br/>• Gradual rollout<br/>• Emergency kill switch]
-    
-    SETTINGS --> INTEGRATIONS[Integration Configuration<br/>• Azure OpenAI keys<br/>• Twilio credentials<br/>• SendGrid API<br/>• EMR system endpoints<br/>• Payment gateway]
-    
-    HEALTH --> ALERTS[Alert Management<br/>• Configure thresholds<br/>• Notification rules<br/>• Escalation paths<br/>• On-call schedules]
-    
-    ALERTS --> ONCALL[On-Call Management<br/>• Rotation schedules<br/>• Contact methods<br/>• Response SLAs]
-    
-    style DASH fill:#ffcc99,stroke:#ff6600,stroke-width:2px
-    style AUDIT fill:#ff9999,stroke:#cc0000,stroke-width:2px
-    style ALERTS fill:#fff3bf,stroke:#f59f00,stroke-width:2px
-```
+This section details the critical AI-driven processes at the heart of the platform.
 
-**Key Features:**
-- **Comprehensive User Management**: Full CRUD operations with role-based access control
-- **Real-time System Monitoring**: Track all services, APIs, and AI health metrics
-- **Audit Trail Compliance**: Searchable logs with 7-year retention for HIPAA compliance
-- **Platform Analytics**: Business intelligence dashboard with custom reporting
-- **Content Management**: Medical content approval workflow with version control
-- **System Configuration**: Centralized configuration management with feature flags
+### 2.1. Conversational AI Flow
 
-**Technology Stack:**
-- **Frontend**: React 18 + TypeScript with Recharts for analytics visualizations
-- **Backend**: Node.js + Express for admin API services
-- **Database**: PostgreSQL (Azure Database for PostgreSQL) for admin data
-
-### 14.1 Basic Usage Analytics (MVP Feature)
-
-The Admin Dashboard includes essential analytics for launch and early growth phases.
-
-**MVP Analytics Dashboard Widgets:**
-
-1. **User Metrics (Real-time)**
-   - Total registered users
-   - Active users (today/week/month)
-   - New signups (daily trend)
-   - User tier distribution (Free/Premium/Enterprise)
-   - Churn rate (monthly)
-
-2. **Conversation Metrics**
-   - Total conversations (lifetime)
-   - Conversations per day (7-day trend)
-   - Average messages per conversation
-   - Voice vs text interaction ratio
-   - Session duration (average/median)
-
-3. **Judge Performance (Basic)**
-   - Total evaluations performed
-   - Pass rate (≥85 score)
-   - Revise rate (60-84 score)
-   - Escalation rate (<60 score)
-   - Average evaluation time
-
-4. **Provider Activity**
-   - Active providers count
-   - Average response time to escalations
-   - Cases resolved per provider
-   - Patient satisfaction ratings (if collected)
-
-5. **System Health (Snapshot)**
-   - API uptime percentage
-   - Average response time (ms)
-   - Error rate (%)
-   - Active user sessions
-   - Token consumption rate
-
-**Export Options:**
-- CSV download for all metrics
-- Weekly email summary to admins
-- Monthly executive report (PDF)
-
-**Advanced Analytics :**
-- Cohort analysis
-- Funnel conversion tracking
-- Feature adoption rates
-- Revenue analytics
-- Predictive churn modeling
-
----
-
-
-### Provider Role in ZIA System
-
-Providers serve as the **clinical oversight layer** for the ZIA AI Assistant:
-
-- **Escalation Review**: Review AI responses flagged by Judge system (score <60)
-- **Clinical Validation**: Approve AI-generated summaries
-- **Patient Care**: Direct communication when needed
-- **Emergency Response**: Immediate intervention for urgent cases
+This flow charts the path of a patient's message from input to the generation of a validated AI response.
 
 ```mermaid
 flowchart TD
-    A[Patient Query] --> B[AI Response]
-    B --> C[Judge Evaluation]
-    C --> D{Score?}
-    D -->|≥85 Pass| E[Send to Patient]
-    D -->|60-84 Revise| F[AI Revises]
-    D -->|<60 Escalate| G[Provider Review]
-    F --> C
-    G --> H[Provider Action]
-    H --> I[Resolution]
+    START([Patient Starts Chat]) --> INPUT{Input Type?}
+    
+    INPUT -->|Text| TEXTINPUT[Type Message<br/>Max 500 chars]
+    INPUT -->|Voice| VOICEINPUT[Click Mic Button]
+    
+    VOICEINPUT --> STT[Azure Speech-to-Text]
+    STT --> TRANSCRIBE[Real-time Transcription]
+    TRANSCRIBE --> TEXTINPUT
+    
+    TEXTINPUT --> SEND[Send Message]
+    SEND --> SAVEUSER[Save to Cosmos DB]
+    SAVEUSER --> TYPING[Show Typing Indicator]
+    
+    TYPING --> CONTEXT[Load Context<br/>Last 10 turns]
+    CONTEXT --> EMERGENCY{Emergency<br/>Keywords?}
+    
+    EMERGENCY -->|Yes| REDFLAG[Red Flag Detection<br/>chest pain/bleeding/<br/>suicidal/unconscious]
+    REDFLAG --> ALERT911[Display 911 Message]
+    ALERT911 --> ALERTPROV[Alert Provider<br/>SMS + Email]
+    ALERTPROV --> SHOWMAP[Show Nearest ER<br/>Google Maps API]
+    SHOWMAP --> CALLBACK[Schedule Callback<br/>15 min]
+    CALLBACK --> INCIDENT[Generate Incident Report]
+    INCIDENT --> FOLLOWUP[4-Hour Follow-up Protocol]
+    
+    EMERGENCY -->|No| RAG[RAG Knowledge Retrieval]
+    RAG --> EMBED[Generate Query Embeddings<br/>text-embedding-3-large]
+    EMBED --> SEARCH[Vector Search<br/>Azure Cognitive Search]
+    SEARCH --> RETRIEVE[Retrieve Top 5 Documents<br/>ACOG/CDC/FDA Guidelines]
+    RETRIEVE --> RERANK[Relevance Reranking]
+    
+    RERANK --> PROMPT[Build Context-Aware Prompt]
+    PROMPT --> GUIDELINES[Add Medical Guidelines]
+    GUIDELINES --> TONE[Configure Empathetic Tone]
+    TONE --> PRIMARY[Azure OpenAI GPT-4<br/>Generate Response]
+    PRIMARY --> RESPONSE[AI Response<br/>< 3 seconds]
+    
+    RESPONSE --> JUDGE[Judge AI Validation Gate]
 ```
 
-## 2. Provider Dashboard
+### 2.2. Judge AI System Flow
 
-### Dashboard Access
-
-**URL:** `https://provider.zia-health.com`
-
-**Authentication:**
-- Azure AD B2C with MFA required
-- Session timeout: 30 minutes
-- HIPAA compliance required
-
-```mermaid
-flowchart LR
-    A[Provider Login] --> B[MFA Verification]
-    B --> C[Dashboard Access]
-    C --> D[Escalation Queue]
-    C --> E[Patient List]
-    C --> F[Analytics]
-```
-
-### Dashboard Layout
-
-**Key Metrics:**
-- Critical Cases (SLA: <2 hours)
-- High Priority (SLA: <24 hours)
-
-- Medium Priority (SLA: <1 week)
-
-**Quick Actions:**
-- View escalation queue
-- Search patients
-- Send messages
-- Schedule appointments
-- Generate reports
-
----
-
-## 3. Escalation Management
-
-### Escalation Triggers
-
-Cases escalate to provider when:
-
-| Trigger | Condition | Priority |
-| --- | --- | --- |
-| Low Judge Score | Score <60 | HIGH |
-| Safety Concern | Safety <70 | CRITICAL |
-| Emergency Keywords | Red flags detected | CRITICAL |
-| Patient Request | Human review requested | MEDIUM |
+The Judge AI is a critical safety and quality component. This diagram shows how every AI response is evaluated against 5 core criteria before being sent to the patient.
 
 ```mermaid
 flowchart TD
-    A[AI Response Generated] --> B{Judge Score}
-    B -->|≥85| C[Pass - Send to Patient]
-    B -->|60-84| D[Revise - Back to AI]
-    B -->|<60| E[Escalate to Provider]
-    E --> F{Priority Level}
-    F -->|Critical| G[SLA: <2 hours]
-    F -->|High| H[SLA: <24 hours]
-    F -->|Medium| I[SLA: <1 week]
+    START([AI Response Generated]) --> INTERCEPT[Judge AI Intercepts<br/>< 500ms validation]
+    
+    INTERCEPT --> EVAL[5-Criteria Evaluation]
+    
+    EVAL --> SAFETY[1. Safety Evaluation<br/>Score: 0-100]
+    EVAL --> ACCURACY[2. Accuracy Validation<br/>Score: 0-100]
+    EVAL --> PRIVACY[3. Privacy Protection<br/>Score: 0-100]
+    EVAL --> EXPERIENCE[4. Patient Experience<br/>Score: 0-100]
+    EVAL --> COMPLIANCE[5. Compliance Check<br/>Score: 0-100]
+    
+    SAFETY --> SAFECHECKS[• Emergency keyword check<br/>• Harmful advice prevention<br/>• Drug interaction check<br/>• Pregnancy contraindications<br/>• Scope boundary validation]
+    SAFECHECKS --> SAFESCORE{Score ≥ 85?}
+    
+    ACCURACY --> ACCCHECKS[• ACOG guideline compliance<br/>• CDC recommendations<br/>• Medical literature RAG<br/>• Symptom-condition match<br/>• Treatment accuracy]
+    ACCCHECKS --> ACCSCORE{Score ≥ 80?}
+    
+    PRIVACY --> PRIVCHECKS[• SSN pattern detection<br/>• Phone number redaction<br/>• Email masking<br/>• Address anonymization<br/>• MRN protection<br/>• Insurance info blocking]
+    PRIVCHECKS --> PRIVSCORE{Score ≥ 90?}
+    
+    EXPERIENCE --> EXPCHECKS[• Empathy assessment<br/>• Clarity check<br/>• Actionability<br/>• Tone appropriateness]
+    EXPCHECKS --> EXPSCORE{Score ≥ 75?}
+    
+    COMPLIANCE --> COMPCHECKS[• HIPAA compliance<br/>• Scope adherence<br/>• Disclaimer inclusion]
+    COMPCHECKS --> COMPSCORE{Score ≥ 85?}
+    
+    SAFESCORE --> OVERALL
+    ACCSCORE --> OVERALL
+    PRIVSCORE --> OVERALL
+    EXPSCORE --> OVERALL
+    COMPSCORE --> OVERALL
+    
+    OVERALL[Calculate Overall Score<br/>Weighted Average] --> DECISION{Overall<br/>Score?}
+    
+    DECISION -->|≥ 85| PASS[PASS DECISION]
+    DECISION -->|60-84| REVISE[REVISE DECISION]
+    DECISION -->|< 60| ESCALATE[ESCALATE DECISION]
+    
+    PASS --> SENDPATIENT[Send Response to Patient]
+    PASS --> LOGPASS[Log Pass to DB]
+    PASS --> METRICS[Update Pass Rate Metrics]
+    SENDPATIENT --> CONTINUE[Continue Conversation]
+    
+    REVISE --> FEEDBACK[Generate Specific Feedback]
+    FEEDBACK --> RETRY{Retry<br/>Count?}
+    RETRY -->|< 3| REGENERATE[Trigger Improved Response]
+    REGENERATE --> PRIMARY[Back to Primary AI]
+    PRIMARY --> INTERCEPT
+    RETRY -->|≥ 3| ESCALATE
+    REVISE --> LOGRETRY[Log Retry Attempts]
+    
+    ESCALATE --> ADDQUEUE[Add to Provider Queue]
+    ESCALATE --> PRIORITY[Assign Priority Level]
+    PRIORITY --> NOTIFYPAT[Notify Patient<br/>Provider responds in 2hrs]
+    NOTIFYPAT --> NOTIFYPROV[Notify Provider<br/>SMS + Email]
+    NOTIFYPROV --> PACKAGE[Package Case Details]
+    PACKAGE --> LOGESC[Log Escalation Event]
 ```
 
-### Provider Actions
+### 2.3. RAG Knowledge Base Flow
 
-When reviewing escalated cases, provider can:
-
-1. **Approve & Send** - AI response is appropriate
-2. **Edit & Send** - Minor corrections needed
-3. **Write Custom Response** - Start from scratch
-4. **Call Patient** - Direct communication needed
-5. **Schedule Appointment** - In-person/telehealth visit
-6. **Emergency Protocol** - 911 or ER referral
-7. **Refer to Specialist** - Outside scope of care
-
----
-
-## 4. Patient Communication
-
-### Communication Channels
-
-```mermaid
-flowchart LR
-    A[Provider] --> B[SMS Notification]
-    A --> C[Email]
-    A --> D[Teams Video Call]
-    A --> E[Phone Call]
-    B --> F[Patient]
-    C --> F
-    D --> F
-    E --> F
-```
-
-### Appointment Scheduling
-
-**Appointment Types:**
-- In-person visit
-- Microsoft Teams video consultation
-- Phone consultation
-
-**Process:**
-1. Select patient
-2. Choose appointment type
-3. Pick date/time slot
-4. Send confirmation to patient
-5. Calendar integration (automatic reminders)
-
----
-
-## 5. Clinical Summaries
-
-### AI-Generated Summaries
-
-AI consolidates patient conversations into structured clinical summaries.
-
-```mermaid
-flowchart TD
-    A[Patient Conversation] --> B[AI Analyzes]
-    B --> C[Generate Summary]
-    C --> D[Provider Review]
-    D --> E{Validation}
-    E -->|Approve| F[Sign & Finalize]
-    E -->|Edit| G[Make Changes]
-    E -->|Reject| H[Regenerate]
-    G --> F
-    H --> C
-```
-
-### Summary Contents
-
-**Key Sections:**
-- Chief complaint
-- Symptoms overview
-- Medical history
-- Risk factors
-- Recommended actions
-- Follow-up plan
-- Provider clinical notes
-
-### Validation Actions
-
-Provider can:
-1. **Approve & Sign** - Summary is accurate
-2. **Edit Summary** - Make corrections/additions
-3. **Reject & Regenerate** - Request AI to recreate
-
----
-
-## 6. Video Consultations
-
-### Microsoft Teams Integration
-
-**Purpose:** Provide secure, HIPAA-compliant video consultations directly within the ZIA platform using Microsoft Teams.
-
-```mermaid
-flowchart LR
-    A[Provider Dashboard] --> B[Schedule Teams Meeting]
-    B --> C[Patient Receives Link]
-    C --> D[Join Video Call]
-    D --> E[Consultation Session]
-    E --> F[Auto-Recorded]
-    F --> G[Transcript Added to Record]
-```
-
-### Teams Features
-
-**Integrated Capabilities:**
-- One-click meeting creation
-- HIPAA-compliant Microsoft 365 Healthcare
-- End-to-end encryption (E2EE)
-- Lobby for patient privacy
-- Screen sharing for education
-- Cloud recording (with patient consent)
-- Automatic transcription via Azure Speech Service
-- Meeting links sent via email/SMS
-- Integration with Outlook calendar
-
-### Video Consultation Workflow
-
-**Step 1: Schedule Teams Consultation**
-
-```
-Provider Dashboard → Select Patient → Schedule Appointment
-→ Choose "Microsoft Teams Video Consultation"
-→ Select date/time
-→ System generates Teams meeting link via Microsoft Graph API
-```
-
-**Step 2: Patient Notification**
-
-```
-Patient receives:
-- Email with Teams link
-- SMS reminder 24 hours before
-- SMS reminder 15 minutes before
-- Calendar invitation (.ics file)
-- "Join from browser" option (no app required)
-```
-
-**Step 3: Conduct Consultation**
-
-```
-Provider clicks "Start Meeting" → Teams opens in browser/app
-Patient clicks link → Enters lobby → Provider admits
-→ Video consultation begins
-→ Screen sharing available for education
-→ Chat for sharing links/resources
-```
-
-**Step 4: Post-Consultation**
-
-```
-System automatically:
-- Saves recording to Azure Blob Storage (HIPAA-compliant)
-- Generates transcript using Azure Speech Service
-- Adds transcript to patient record
-- Creates clinical note template
-- Logs consultation in audit trail
-- Stores in Microsoft Stream (secure)
-```
-
-### Teams Security & Compliance
-
-**HIPAA Compliance:**
-- Business Associate Agreement (BAA) with Microsoft
-- End-to-end 256-bit AES encryption
-- Microsoft 365 HIPAA-compliant configuration
-- Secure cloud recording in OneDrive for Business
-- No third-party access to PHI
-- Data residency controls (US data centers)
-
-**Privacy Controls:**
-- Lobby enabled by default
-- Anonymous join disabled
-- Encrypted chat logs
-- Participant authentication required
-- Screen sharing controls
-- Meeting recording consent
+This flow explains how the Retrieval-Augmented Generation (RAG) system grounds the AI's responses in a curated knowledge base of medical guidelines and drug information.
 
 ```mermaid
 flowchart TD
-    A[ZIA Portal] --> B[Microsoft Graph API]
-    B --> C[Create Teams Meeting]
-    C --> D[Generate Link]
-    D --> E[Send to Patient]
-    E --> F[Video Session]
-    F --> G[Recording]
-    G --> H[Azure Storage]
-    H --> I[Patient Record]
+    START([RAG System]) --> INDEX[Medical Guidelines Index]
+    
+    INDEX --> ACOG[Index 500+ ACOG<br/>Practice Bulletins]
+    INDEX --> CDC[Index CDC Women's<br/>Health Guidelines]
+    INDEX --> FDA[Index FDA Drug<br/>Safety Communications]
+    INDEX --> NIH[Index NIH Resources]
+    
+    ACOG --> VECTORIZE[Vectorize Documents<br/>text-embedding-3-large]
+    CDC --> VECTORIZE
+    FDA --> VECTORIZE
+    NIH --> VECTORIZE
+    
+    VECTORIZE --> COGSEARCH[Azure Cognitive Search<br/>Vector Store]
+    COGSEARCH --> RELEVANCE[Relevance Scoring]
+    COGSEARCH --> SOURCE[Source Attribution]
+    COGSEARCH --> UPDATE[Monthly Content Updates]
+    
+    START --> DRUGDB[Drug Database]
+    DRUGDB --> INDEXDRUGS[Index 10,000+ Medications]
+    INDEXDRUGS --> PREGCAT[Pregnancy Categories]
+    INDEXDRUGS --> CONTRA[Contraindications List]
+    INDEXDRUGS --> INTERACT[Drug Interactions Database]
+    INDEXDRUGS --> DOSAGE[Dosage Guidelines]
+    INDEXDRUGS --> SIDEEFFECTS[Side Effects]
+    INDEXDRUGS --> NAMES[Generic/Brand Name Mapping]
+    INDEXDRUGS --> SEARCHDRUG[Search by Name/Category]
+    INDEXDRUGS --> ALERTS[Drug Safety Alerts]
+    
+    START --> RETRIEVAL[Context Retrieval Process]
+    RETRIEVAL --> QUERY[Patient Query Received]
+    QUERY --> EMBEDQUERY[Generate Query Embeddings<br/>text-embedding-3-large]
+    EMBEDQUERY --> VECSEARCH[Vector Similarity Search]
+    VECSEARCH --> TOP5[Retrieve Top 5<br/>Relevant Documents]
+    TOP5 --> RERANK[Relevance Reranking]
+    RERANK --> AUGMENT[Augment Context to<br/>AI Prompt]
+    AUGMENT --> CITE[Include Source Citation<br/>in Response]
+    CITE --> TIMING[Retrieval Time < 200ms]
 ```
 
-### Teams API Configuration
-
-**Technical Setup:**
-- Microsoft Graph API integration
-- Azure AD OAuth 2.0 authentication
-- Teams meeting creation via REST API
-- Webhook for meeting events
-- Automatic recording upload to Azure
-- Calendar sync with provider schedules
-
-**Meeting Settings:**
-- Join before host: Disabled
-- Lobby: Enabled (patients wait for provider)
-- Participant video: On by default
-- Audio: Computer audio + dial-in option
-- Recording: Cloud recording (auto-start)
-- Transcript: Live captions + post-meeting transcript
-- Chat: Enabled (saved to record)
-- Screen sharing: Host only (provider control)
-
-**Browser Compatibility:**
-- Chrome, Edge, Safari, Firefox
-- No app download required for patients
-- Mobile app available (iOS/Android)
-- Supports desktop and mobile devices
-
 ---
 
-## 7. EMR Export
+## 3. User Journeys & Workflows
 
-### Export Formats
+This section visualizes the end-to-end experience for each user role within the ZIA platform.
 
----
+### 3.1. End-to-End Patient Journey
 
-## 7. EMR Export
-
-### Export Formats
-
-**Available Formats:**
-
-**Option 1: PDF Clinical Summary**
-- Human-readable format
-- Provider signature embedded
-- Practice letterhead
-- HIPAA-compliant footer
-
-**Option 2: CCD/CCDA (HL7 Standard)**
-- XML format compliant with HL7
-- Compatible with Epic, Cerner
-- Includes medications, allergies, problems
-
-```mermaid
-flowchart LR
-    A[Clinical Summary] --> B{Select Format}
-    B -->|PDF| C[Download PDF]
-    B -->|CCD/CCDA| D[HL7 XML]
-    B -->|FHIR| E[JSON Bundle]
-    C --> F[Send to EMR]
-    D --> F
-    E --> F
-```
-
-### Export Process
-
-1. Select patient summary
-2. Choose export format (PDF/CCD/FHIR)
-3. Preview document
-4. Approve for export
-5. Send to EMR or download
-
-**Audit Trail:**
-- All exports logged
-- Provider ID and timestamp recorded
-- 7-year retention for HIPAA compliance
-
----
-
-## 8. Emergency Protocol
-
-### Emergency Detection
+From discovery and onboarding to interacting with the AI and managing their health, this flow maps the complete patient experience.
 
 ```mermaid
 flowchart TD
-    A[Patient Message] --> B[AI Analysis]
-    B --> C{Emergency?}
-    C -->|Yes| D[Immediate Alert]
-    C -->|No| E[Normal Flow]
-    D --> F[Notify Provider]
-    D --> G[Alert Patient]
-    D --> H[Log Incident]
-    F --> I[Provider Action]
+    START([Patient Discovers ZIA]) --> SIGNUP[Sign Up<br/>Email/Phone Verification]
+    SIGNUP --> ONBOARD[Complete Onboarding<br/>5-Step Health Profile]
+    ONBOARD --> CONSENT[Accept HIPAA Consent<br/>Digital Signature]
+    CONSENT --> DASHBOARD[Access Dashboard<br/>Health Summary]
+    
+    DASHBOARD --> ACTION{Patient Action?}
+    
+    ACTION -->|Start Chat| CHAT[Open Chat Interface]
+    ACTION -->|Log Symptom| SYMPTOM[Symptom Tracker]
+    ACTION -->|Add Medication| MEDICATION[Medication List]
+    ACTION -->|Book Appointment| APPOINTMENT[Schedule Appointment]
+    ACTION -->|View History| HISTORY[Conversation History]
+    
+    CHAT --> INPUTCHAT[Enter Question<br/>Text or Voice]
+    INPUTCHAT --> AIPROCESS[AI Processing<br/>Primary AI + RAG]
+    AIPROCESS --> JUDGECHECK[Judge AI Validation]
+    
+    JUDGECHECK --> DECISION{Judge<br/>Decision?}
+    
+    DECISION -->|Pass ≥85| RESPONSE[Receive AI Response<br/>< 3 seconds]
+    DECISION -->|Revise 60-84| RETRY[AI Regenerates Response<br/>Max 3 Attempts]
+    DECISION -->|Escalate <60| ESCALATION[Case Escalated to Provider]
+    DECISION -->|Emergency| EMERGENCY[Emergency Protocol<br/>911 Alert + Provider Notification]
+    
+    RETRY --> JUDGECHECK
+    
+    RESPONSE --> SATISFIED{Patient<br/>Satisfied?}
+    SATISFIED -->|Yes| FOLLOWUP[Continue Conversation<br/>or End Chat]
+    SATISFIED -->|No| INPUTCHAT
+    
+    ESCALATION --> PROVREVIEW[Provider Reviews Case<br/>Within 2 Hours]
+    PROVREVIEW --> PROVRESPONSE[Provider Sends Response]
+    PROVRESPONSE --> PATNOTIF[Patient Receives Notification]
+    PATNOTIF --> FOLLOWUP
+    
+    EMERGENCY --> CALL911[Patient Calls 911]
+    EMERGENCY --> PROVEMERG[Provider Alerted Immediately]
+    PROVEMERG --> CALLBACK[Provider Callback<br/>Within 15 Minutes]
+    CALLBACK --> FOLLOWUPEMERG[4-Hour Follow-up Check]
+    
+    SYMPTOM --> LOGSYMPTOM[Log Symptom Details<br/>Severity/Duration/Photo]
+    LOGSYMPTOM --> SAVEDB[Save to Database]
+    SAVEDB --> TIMELINE[View Symptom Timeline<br/>Trends & Charts]
+    
+    MEDICATION --> ADDMED[Add Medication<br/>Name/Dosage/Frequency]
+    ADDMED --> SETREMINDER[Set Reminders]
+    SETREMINDER --> NOTIFICATION[Receive Notifications<br/>SMS/Email/Push]
+    
+    APPOINTMENT --> SELECTSLOT[Select Date/Time<br/>Provider Availability]
+    SELECTSLOT --> BOOKCONFIRM[Book & Confirm<br/>Email/SMS Confirmation]
+    BOOKCONFIRM --> REMINDER[Receive Reminders<br/>24hr & 1hr Before]
+    REMINDER --> ATTEND[Attend Appointment<br/>In-Person or Telehealth]
+    
+    FOLLOWUP --> DASHBOARD
+    TIMELINE --> DASHBOARD
+    NOTIFICATION --> DASHBOARD
+    ATTEND --> DASHBOARD
 ```
 
-### Red Flag Keywords
+### 3.2. Provider Workflow Journey
 
-**Immediate Escalation Triggers:**
-- Severe chest pain, difficulty breathing
-- Heavy bleeding (>1 pad/hour)
-- Severe headache with vision changes
-- Suicidal thoughts, self-harm
-- Loss of consciousness
-- Severe abdominal pain
+This diagram outlines how a provider interacts with the platform, focusing on managing patients and reviewing escalated cases.
 
-### Provider Emergency Actions
+```mermaid
+flowchart TD
+    START([Provider Login]) --> AUTH[Azure AD B2C + MFA]
+    AUTH --> PROVDASH[Provider Dashboard]
+    
+    PROVDASH --> VIEW{View?}
+    
+    VIEW -->|Patient List| PATIENTS[View All Assigned Patients<br/>Search/Filter/Sort]
+    VIEW -->|Escalation Queue| QUEUE[Escalation Queue<br/>Priority-Based List]
+    VIEW -->|Analytics| ANALYTICS[Provider Analytics<br/>Performance Metrics]
+    VIEW -->|Calendar| CALENDAR[Provider Calendar<br/>Appointments/Availability]
+    
+    PATIENTS --> SELECTPAT[Select Patient]
+    SELECTPAT --> PATDETAIL[View Patient Details<br/>Profile/History/Timeline]
+    PATDETAIL --> PATACTION{Action?}
+    PATACTION -->|Send Message| MESSAGE[Send Secure Message]
+    PATACTION -->|Schedule Appointment| SCHEDAPPT[Schedule Appointment]
+    PATACTION -->|View Timeline| TIMELINE[Patient Timeline<br/>All Events]
+    PATACTION -->|Export Data| EXPORT[Export to EMR<br/>FHIR/CCD/PDF]
+    
+    QUEUE --> SELECTCASE[Select Case from Queue]
+    SELECTCASE --> CASEREVIEW[Case Review Interface<br/>3-Panel Layout]
+    
+    CASEREVIEW --> PANEL1[Panel 1: Patient Context<br/>Demographics/Medical History]
+    CASEREVIEW --> PANEL2[Panel 2: Conversation<br/>AI Response/Judge Scores]
+    CASEREVIEW --> PANEL3[Panel 3: Provider Actions]
+    
+    PANEL3 --> PROVACTION{Provider<br/>Action?}
+    
+    PROVACTION -->|Approve| APPROVE[Approve AI Response<br/>Send to Patient]
+    PROVACTION -->|Edit| EDIT[Edit AI Response<br/>Make Corrections]
+    PROVACTION -->|Custom| CUSTOM[Write Custom Response<br/>From Scratch]
+    PROVACTION -->|Flag| FLAG[Flag for Medical Director<br/>Complex Case]
+    PROVACTION -->|Comment| COMMENT[Add Internal Comment<br/>For Team]
+    
+    APPROVE --> CLOSECASE[Close Case<br/>Update Metrics]
+    EDIT --> SENDEDITED[Send Edited Response<br/>to Patient]
+    CUSTOM --> SENDCUSTOM[Send Custom Response<br/>to Patient]
+    FLAG --> ESCALATEMD[Escalate to Medical Director<br/>High Priority]
+    COMMENT --> SAVECOMMENT[Save Comment<br/>Log in System]
+    
+    CLOSECASE --> NOTIFYPAT[Notify Patient<br/>Response Available]
+    SENDEDITED --> NOTIFYPAT
+    SENDCUSTOM --> NOTIFYPAT
+    
+    NOTIFYPAT --> UPDATEQUEUE[Update Queue<br/>Remove Case]
+    UPDATEQUEUE --> PROVDASH
+    
+    ANALYTICS --> VIEWMETRICS[View Metrics<br/>Cases/Time/Quality<br/>Satisfaction/Escalations]
+    VIEWMETRICS --> TRENDS[View Trend Charts<br/>Performance Over Time]
+    TRENDS --> EXPORTANALYTICS[Export Analytics<br/>PDF/CSV]
+    
+    CALENDAR --> VIEWCAL[View Calendar<br/>Day/Week/Month]
+    VIEWCAL --> CALACTION{Calendar<br/>Action?}
+    CALACTION -->|Add Slot| ADDSLOT[Add Appointment Slot]
+    CALACTION -->|Block Time| BLOCKTIME[Block Time Off]
+    CALACTION -->|View Appointment| VIEWAPPT[View Appointment Details]
+    CALACTION -->|Sync| SYNCCAL[Sync with Outlook/<br/>Google Calendar]
+```
 
-When emergency detected:
+### 3.3. Admin Workflow Journey
 
-1. **Immediate Notification**
-    - Dashboard red alert
-    - SMS to provider
-    - Push notification
-    - Email alert
-2. **Provider Response**
-    - Call patient immediately
-    - Provide 911 guidance
-    - Notify emergency contacts
-    - Document all actions
-3. **System Actions**
-    - Display emergency instructions to patient
-    - Log incident with timestamps
-    - Create incident report
-    - Notify on-call supervisor
+This flow shows how an administrator manages the entire platform, including user management, system configuration, and monitoring.
 
-### Documentation
+```mermaid
+flowchart TD
+    START([Admin Login]) --> AUTH[Azure AD B2C + MFA<br/>IP Whitelist Check]
+    AUTH --> ADMINDASH[Admin Dashboard]
+    
+    ADMINDASH --> SECTION{Admin<br/>Section?}
+    
+    SECTION -->|User Management| USERS[User Management]
+    SECTION -->|System Analytics| SYSANALYTICS[System Analytics]
+    SECTION -->|Judge Config| JUDGECONFIG[Judge Configuration]
+    SECTION -->|Emergency Keywords| KEYWORDS[Emergency Keywords]
+    SECTION -->|System Health| HEALTH[System Health Monitor]
+    SECTION -->|Audit Logs| AUDIT[Audit Logs]
+    
+    USERS --> USERLIST[View All Users<br/>Patients/Providers/Admins/Trainers]
+    USERLIST --> USERACTION{User<br/>Action?}
+    USERACTION -->|Add User| ADDUSER[Add New User<br/>Assign Role]
+    USERACTION -->|Edit User| EDITUSER[Edit User Details<br/>Update Info]
+    USERACTION -->|Activate/Deactivate| TOGGLE[Activate or Deactivate<br/>User Account]
+    USERACTION -->|Bulk Import| BULKIMPORT[Bulk Import Users<br/>CSV Upload]
+    USERACTION -->|View Activity| ACTIVITY[View User Activity Logs]
+    
+    SYSANALYTICS --> METRICS[View System Metrics]
+    METRICS --> TOTALUSERS[Total Users Count]
+    METRICS --> ACTIVEUSERS[Active Users<br/>Today/Week/Month]
+    METRICS --> SIGNUPS[New Signups Trend]
+    METRICS --> CONVERSATIONS[Conversation Volume]
+    METRICS --> PASSRATE[Judge Pass Rate]
+    METRICS --> ESCALATIONS[Escalation Rate by Category]
+    METRICS --> EMERGENCIES[Emergency Detection Accuracy]
+    METRICS --> TOKENS[Token Usage Metrics]
+    METRICS --> EXPORTMETRICS[Export Analytics CSV]
+    
+    JUDGECONFIG --> CONFIGUI[Configuration UI]
+    CONFIGUI --> WEIGHTS[Adjust Criteria Weights<br/>Safety/Accuracy/Privacy<br/>Experience/Compliance]
+    CONFIGUI --> THRESHOLDS[Set Decision Thresholds<br/>Pass/Revise/Escalate]
+    CONFIGUI --> SAVECONFIG[Save Configuration<br/>Version Control]
+    CONFIGUI --> PREVIEWCONFIG[Preview Changes<br/>Test on Sample Cases]
+    CONFIGUI --> DEPLOYCONFIG[Deploy Configuration<br/>to Production]
+    CONFIGUI --> ROLLBACKCONFIG[Rollback to Previous<br/>Configuration]
+    
+    KEYWORDS --> KEYWORDLIST[View Keyword List<br/>By Category]
+    KEYWORDLIST --> KEYACTION{Keyword<br/>Action?}
+    KEYACTION -->|Add| ADDKEY[Add New Keyword<br/>Set Category/Sensitivity]
+    KEYACTION -->|Edit| EDITKEY[Edit Keyword<br/>Update Settings]
+    KEYACTION -->|Delete| DELETEKEY[Delete Keyword<br/>Confirm Removal]
+    KEYACTION -->|Test| TESTKEY[Test Keyword Detection<br/>Sample Queries]
+    KEYACTION -->|View Analytics| KEYANALYTICS[View Trigger Count<br/>False Positive Rate]
+    
+    HEALTH --> HEALTHDASH[System Health Dashboard]
+    HEALTHDASH --> APIRESPONSE[API Response Time Chart]
+    HEALTHDASH --> DBPERF[Database Performance]
+    HEALTHDASH --> AISTATUS[AI Service Status<br/>Primary/Judge]
+    HEALTHDASH --> ERRORRATE[Error Rate Monitoring]
+    HEALTHDASH --> SESSIONS[Active Sessions Count]
+    HEALTHDASH --> QUEUES[Queue Depths]
+    HEALTHDASH --> UPTIME[System Uptime %]
+    HEALTHDASH --> ALERTRULES[Configure Alert Rules<br/>Thresholds/Notifications]
+    
+    AUDIT --> AUDITLOGS[View Audit Logs]
+    AUDITLOGS --> SEARCHLOGS[Search Logs<br/>User/Action/Date]
+    AUDITLOGS --> FILTERLOGS[Filter by Type<br/>Auth/Data Access<br/>Config Change]
+    AUDITLOGS --> EXPORTLOGS[Export Logs<br/>CSV for Compliance]
+    AUDITLOGS --> COMPLIANCE[Generate Compliance Reports<br/>HIPAA/SOC2]
+```
 
-All emergencies automatically logged:
-- Patient message (exact wording)
-- Symptoms identified
-- Provider actions taken
-- Patient outcome
-- Response times
-- 7-year retention for compliance
+### 3.4. Trainer Workflow Journey 
+
+This comprehensive flow details the activities of a trainer, whose role is to review AI responses, provide feedback, manage test scenarios, and contribute to the continuous improvement of the AI models.
+
+```mermaid
+flowchart TD
+    START([Trainer Login]) --> AUTH[Azure AD B2C + MFA]
+    AUTH --> TRAINDASH[Training Dashboard]
+    
+    TRAINDASH --> STATS[View Dashboard Stats<br/>Cases/Time/Quality<br/>Earnings/Ranking]
+    
+    TRAINDASH --> SECTION{Trainer<br/>Section?}
+    
+    SECTION -->|Review Queue| QUEUE[Review Queue]
+    SECTION -->|Test Library| TESTLIB[Test Scenario Library]
+    SECTION -->|Configuration| CONFIG[Configuration Management]
+    SECTION -->|Prompts| PROMPTS[Prompt Management]
+    SECTION -->|Keywords| KEYWORDS[Emergency Keywords]
+    SECTION -->|Analytics| ANALYTICS[Trainer Analytics]
+    SECTION -->|Compensation| COMPENSATION[Compensation Tracking]
+    SECTION -->|Retraining| RETRAIN[Retraining Pipeline]
+    
+    QUEUE --> QUEUELIST[View Queue List<br/>Priority-Based]
+    QUEUELIST --> SELECTCASE[Select Case to Review]
+    SELECTCASE --> CASEREVIEW[Case Review Interface<br/>3-Panel Layout]
+    
+    CASEREVIEW --> REVIEWPANELS[View All Panels<br/>Context/Conversation/Actions]
+    REVIEWPANELS --> JUDGEDETAIL[Review Judge Scores<br/>5 Criteria Breakdown]
+    JUDGEDETAIL --> TRAINERACTION{Trainer<br/>Action?}
+    
+    TRAINERACTION -->|Approve| APPROVE[Approve Judge Decision<br/>Mark as Correct]
+    TRAINERACTION -->|Better Response| BETTER[Provide Better Response<br/>Rich Text Editor]
+    TRAINERACTION -->|Flag| FLAG[Flag Issue<br/>Escalate to Medical Director]
+    TRAINERACTION -->|Comment| COMMENT[Add Comment<br/>Feedback for ML Team]
+    TRAINERACTION -->|Rate| RATE[Rate Response<br/>1-5 Stars]
+    TRAINERACTION -->|Training Example| TRAINING[Mark as Training Example<br/>Add to Dataset]
+    TRAINERACTION -->|Test Library| ADDTEST[Add to Test Library<br/>Create Test Case]
+    
+    BETTER --> EDITOR[Open Rich Text Editor<br/>Lexical with Markdown]
+    EDITOR --> WRITEFEEDBACK[Write Better Response<br/>150-500 Words]
+    WRITEFEEDBACK --> SELECTCAT[Select Feedback Category<br/>Accuracy/Safety/Tone/etc]
+    SELECTCAT --> REASONING[Provide Reasoning<br/>Required Field]
+    REASONING --> AUTOSAVE[Auto-save Draft<br/>Every 30 Seconds]
+    AUTOSAVE --> SUBMITFEEDBACK[Submit Feedback]
+    SUBMITFEEDBACK --> UPDATECASE[Update Case Status<br/>Log Feedback]
+    
+    APPROVE --> UPDATECASE
+    FLAG --> UPDATECASE
+    COMMENT --> UPDATECASE
+    RATE --> UPDATECASE
+    TRAINING --> UPDATECASE
+    ADDTEST --> UPDATECASE
+    
+    UPDATECASE --> NEXTCASE[Move to Next Case<br/>or Return to Queue]
+    
+    TESTLIB --> SCENARIOS[View Scenario Library<br/>All Test Cases]
+    SCENARIOS --> TESTACTION{Test<br/>Action?}
+    TESTACTION -->|Upload| UPLOAD[Upload Test Cases<br/>CSV/JSON Bulk Import]
+    TESTACTION -->|Create| CREATE[Create Individual Scenario<br/>Expected Response]
+    TESTACTION -->|Edit| EDIT[Edit Scenario<br/>Update Details]
+    TESTACTION -->|Run Tests| RUNTESTS[Execute Test Suite]
+    
+    RUNTESTS --> SELECTMODEL[Select Model Version<br/>Production/Candidate]
+    SELECTMODEL --> EXECUTE[Run Tests<br/>Real-time Progress]
+    EXECUTE --> RESULTS[View Results<br/>Comparison Report]
+    RESULTS --> PASSRATE[Pass/Fail Rate<br/>Score Distribution]
+    PASSRATE --> REGRESSION[Regression Detection<br/>Highlight Issues]
+    REGRESSION --> DECISION{Approve<br/>Deployment?}
+    DECISION -->|Yes| DEPLOY[Approve for Deployment<br/>If Pass Rate >95%]
+    DECISION -->|No| MORETRAINING[More Training Needed<br/>Flag Issues]
+    
+    CONFIG --> CONFIGUI[Configuration UI]
+    CONFIGUI --> ADJUSTWEIGHTS[Adjust Judge Weights<br/>Criteria Sliders]
+    CONFIGUI --> SETTHRESH[Set Thresholds<br/>Pass/Revise/Escalate]
+    CONFIGUI --> SAVEVERSION[Save Config Version<br/>Git-Backed]
+    CONFIGUI --> VIEWHISTORY[View Config History<br/>All Changes]
+    CONFIGUI --> ROLLBACK[Rollback Configuration<br/>Previous Version]
+    CONFIGUI --> ABSETUP[A/B Testing Setup<br/>Traffic Split]
+    
+    PROMPTS --> PROMPTEDITOR[Prompt Editor]
+    PROMPTEDITOR --> EDITPRIMARY[Edit Primary AI Prompt<br/>Syntax Highlighting]
+    PROMPTEDITOR --> EDITJUDGE[Edit Judge Prompt<br/>Evaluation Template]
+    PROMPTEDITOR --> VERSIONCONTROL[Version Control<br/>Git Integration]
+    PROMPTEDITOR --> PREVIEWPROMPT[Preview on Sample Cases<br/>Test Before Deploy]
+    PROMPTEDITOR --> DEPLOYPROMPT[Deploy Prompt<br/>to Production]
+    PROMPTEDITOR --> ROLLBACKPROMPT[Rollback Prompt<br/>Previous Version]
+    
+    KEYWORDS --> KEYWORDMGMT[Keyword Management UI]
+    KEYWORDMGMT --> ADDKEY[Add/Edit/Remove Keywords]
+    KEYWORDMGMT --> SENSITIVITY[Adjust Sensitivity<br/>Exact/Fuzzy]
+    KEYWORDMGMT --> CONTEXTRULES[Define Context Rules<br/>Trigger Conditions]
+    KEYWORDMGMT --> TESTKEYWORDS[Test Keywords<br/>Sample Queries]
+    KEYWORDMGMT --> VIEWKEYANALYTICS[View Keyword Analytics<br/>Trigger Stats]
+    
+    ANALYTICS --> VIEWANALYTICS[View Analytics Dashboard]
+    VIEWANALYTICS --> TRAINERMETRICS[Trainer Metrics<br/>Personal Performance]
+    VIEWANALYTICS --> MODELMETRICS[Model Performance<br/>System-wide Stats]
+    VIEWANALYTICS --> CHARTS[View Charts<br/>Trends/Distributions]
+    VIEWANALYTICS --> EXPORTANALYTICS[Export Analytics<br/>CSV Reports]
+    
+    COMPENSATION --> VIEWCOMP[View Compensation Dashboard]
+    VIEWCOMP --> STRUCTURE[Payment Structure<br/>Base + Bonuses]
+    VIEWCOMP --> TRACKING[Automatic Tracking<br/>Cases/Time/Quality]
+    VIEWCOMP --> MONTHLY[Monthly Total<br/>Earnings Breakdown]
+    VIEWCOMP --> BONUS[Bonus Eligibility<br/>Progress Indicator]
+    VIEWCOMP --> HISTORY[Payment History<br/>Past Payments]
+    VIEWCOMP --> INVOICE[Generate Invoice<br/>PDF Download]
+    VIEWCOMP --> PAYOUT[Stripe Payout<br/>Monthly Transfer]
+    
+    RETRAIN --> RETRAINPIPELINE[Retraining Pipeline Dashboard]
+    RETRAINPIPELINE --> AGGREGATE[Aggregate Feedback<br/>All Trainer Input]
+    AGGREGATE --> DETECTPATTERNS[Detect Error Patterns<br/>Common Issues]
+    DETECTPATTERNS --> EXPORTDATA[Export Training Data<br/>JSONL Format]
+    EXPORTDATA --> VIEWCOUNTER[View Retraining Counter<br/>New Examples Count]
+    VIEWCOUNTER --> TRIGGERJOB[Trigger Retraining Job<br/>Manual Start]
+    TRIGGERJOB --> JOBSTATUS[Monitor Job Status<br/>Queued/Running/Complete]
+    JOBSTATUS --> MODELMGMT[Model Version Management<br/>All Versions]
+    MODELMGMT --> DEPLOYNEW[Deploy New Model<br/>to Production]
+    MODELMGMT --> ROLLBACKMODEL[Rollback Model<br/>Previous Version]
+    MODELMGMT --> VIEWMETRICS[View Training Metrics<br/>Loss/Accuracy Curves]
+```
+
+---
+
+## 4. Detailed Feature & System Flows
+
+This section drills down into the specific functionality of each major dashboard and supporting system.
+
+### 4.1. Patient Dashboard Functional Flow
+```mermaid
+flowchart TD
+    START([Patient Dashboard]) --> SUMMARY[My Health Summary]
+    
+    SUMMARY --> RECENT[Recent Conversations<br/>Last 5 chats]
+    SUMMARY --> SYMPTOMS[Active Symptoms List]
+    SUMMARY --> MEDS[Current Medications]
+    SUMMARY --> APPTS[Upcoming Appointments]
+    SUMMARY --> QUICK["Quick Actions<br/>Start Chat | View History"]
+    
+    START --> CONVLIST[Conversation List]
+    CONVLIST --> CARDS[Conversation Cards<br/>Date/Summary/Status]
+    CARDS --> SEARCH[Search by Keyword]
+    CARDS --> FILTER[Filter by Date/Category]
+    CARDS --> SORT[Sort Recent/Oldest]
+    CARDS --> EXPORT[Export as PDF]
+    CARDS --> DELETE[Delete Conversation]
+    
+    START --> TRACKER[Symptom Tracker]
+    TRACKER --> ADDSYMPTOM[Add Symptom Button]
+    ADDSYMPTOM --> FORM[Entry Form<br/>Name/Severity/Duration]
+    FORM --> SCALE[Intensity Scale 1-10]
+    SCALE --> PHOTO[Upload Photo<br/>Azure Blob Storage]
+    PHOTO --> TIMELINE[Display History Timeline]
+    TIMELINE --> TREND[Trend Visualization<br/>Line Chart]
+    
+    START --> MEDLIST[Medication List]
+    MEDLIST --> ADDMED[Add Medication Form<br/>Name/Dosage/Frequency]
+    ADDMED --> REMINDER[Set Reminders]
+    REMINDER --> REFILL[Refill Alerts]
+    MEDLIST --> HISTORY[Medication History]
+    MEDLIST --> EDITDEL[Edit/Delete Medications]
+    MEDLIST --> EXPORTMED[Export List as PDF]
+    
+    START --> APPTLIST[Appointments]
+    APPTLIST --> UPCOMING[Upcoming Appointments<br/>Date/Time/Provider]
+    UPCOMING --> ADDCAL[Add to Calendar<br/>iCal/Google]
+    UPCOMING --> RESCHEDULE[Reschedule Option]
+    UPCOMING --> CANCEL[Cancel Appointment]
+    APPTLIST --> REMINDERS[Reminders<br/>24hr & 1hr before]
+    APPTLIST --> PAST[Past Appointments History]
+```
+
+### 4.2. Provider Dashboard Functional Flow
+
+```mermaid
+flowchart TD
+    START([Provider Dashboard]) --> PATLIST[Patient List]
+    
+    PATLIST --> CARDS[Patient Cards<br/>Name/Age/Last Activity]
+    CARDS --> SEARCHPAT[Search by Name/ID]
+    CARDS --> FILTERPAT[Filter Active/Inactive]
+    CARDS --> SORTPAT[Sort by Priority/<br/>Recent Activity]
+    CARDS --> COUNT[Display Patient Count]
+    CARDS --> QUICKVIEW[Quick View Profile Modal]
+    CARDS --> ASSIGN[Assign/Unassign Patients]
+    
+    START --> ESCQUEUE[Escalation Queue]
+    ESCQUEUE --> PRIORITY[Priority-Based List<br/>Critical/High/Medium]
+    PRIORITY --> CASECARDS[Case Cards<br/>Patient Info &#124; AI Response<br/>Judge Scores]
+    CASECARDS --> SLA[SLA Countdown Timer]
+    CASECARDS --> FILTERESC[Filter by Priority/Date]
+    CASECARDS --> SEARCHCASE[Search by Patient Name]
+    CASECARDS --> CASECOUNT[Case Count by Priority]
+    CASECARDS --> REALTIME[Real-time Updates<br/>SignalR]
+    
+    ESCQUEUE --> REVIEW[Case Review Interface]
+    REVIEW --> LAYOUT[3-Panel Layout]
+    LAYOUT --> PANEL1[Panel 1: Patient Context<br/>Demographics &#124; Medical History]
+    LAYOUT --> PANEL2[Panel 2: Conversation<br/>Full Thread &#124; Judge Scores]
+    LAYOUT --> PANEL3[Panel 3: Provider Actions]
+    
+    PANEL2 --> AIRESPONSE[Highlight AI Response]
+    PANEL2 --> JUDGEBREAK[Judge Evaluation Breakdown<br/>5 Criteria + Reasoning]
+    PANEL2 --> GUIDEREF[Guideline References]
+    PANEL2 --> METADATA[Metadata<br/>Timestamp &#124; Model Version]
+    
+    PANEL3 --> ACTIONS[Provider Actions]
+    ACTIONS --> APPROVE[Approve AI Response]
+    ACTIONS --> EDIT[Edit Response<br/>Text Editor]
+    ACTIONS --> CUSTOM[Write Custom Response]
+    ACTIONS --> FLAG[Flag for Medical Director]
+    ACTIONS --> COMMENT[Add Internal Comment]
+    ACTIONS --> RATE[Rate AI Response<br/>1-5 Stars]
+    ACTIONS --> TRAINING[Mark as Training Example]
+    ACTIONS --> CLOSE[Close Case]
+    
+    START --> CLINICAL[Clinical Summary View]
+    CLINICAL --> AISUMMARY[AI-Generated Intake Summary]
+    AISUMMARY --> CHIEF[Chief Complaint]
+    AISUMMARY --> SYMPOVERVIEW[Symptoms Overview Table]
+    AISUMMARY --> MEDHIST[Medical History Highlight]
+    AISUMMARY --> RISK[Risk Factors<br/>Color-Coded]
+    AISUMMARY --> RECOMMEND[Recommended Actions List]
+    AISUMMARY --> PROVNOTES[Provider Notes Section]
+    AISUMMARY --> EXPORTCLIN[Export as PDF]
+    AISUMMARY --> SHARE[Share with Patient]
+    
+    START --> TIMELINE[Patient Timeline]
+    TIMELINE --> VISUAL[Timeline Visualization]
+    VISUAL --> EVENTS[Event Cards<br/>Conversations &#124; Symptoms<br/>Medications &#124; Appointments]
+    EVENTS --> FILTERTIME[Filter by Event Type]
+    EVENTS --> DATERANGE[Date Range Selector]
+    EVENTS --> ZOOM[Zoom In/Out Timeline]
+    EVENTS --> EXPORTTIME[Export Timeline PDF]
+    EVENTS --> MANUAL[Manual Event Entry]
+    
+    START --> ANALYTICS[Provider Analytics]
+    ANALYTICS --> REVIEWED[Cases Reviewed<br/>Today/Week/Month]
+    ANALYTICS --> AVGTIME[Average Response Time]
+    ANALYTICS --> SATISFACTION[Patient Satisfaction Rating]
+    ANALYTICS --> ESCRATE[Escalation Rate]
+    ANALYTICS --> ACTIVECOUNT[Active Patients Count]
+    ANALYTICS --> QUALITY[Response Quality Score]
+    ANALYTICS --> TRENDS[Performance Trend Charts]
+```
+
+### 4.3. Admin Dashboard Functional Flow
+
+```mermaid
+flowchart TD
+    START([Admin Dashboard]) --> USERMGMT[User Management]
+    
+    USERMGMT --> USERLIST[User List<br/>Patients/Providers/Admins]
+    USERLIST --> SEARCHUSER[Search by Name/Email/Role]
+    USERLIST --> FILTERUSER[Filter by Role/Status]
+    USERLIST --> ADDUSER[Add New User]
+    USERLIST --> EDITUSER[Edit User Details]
+    USERLIST --> ACTIVATE[Activate/Deactivate Users]
+    USERLIST --> BULKIMPORT[Bulk Import Users CSV]
+    USERLIST --> ACTIVITYLOG[User Activity Logs]
+    
+    START --> SYSANALYTICS[System Analytics]
+    SYSANALYTICS --> TOTALUSERS[Total Users Count]
+    SYSANALYTICS --> ACTIVEUSERS[Active Users<br/>Today/Week/Month]
+    SYSANALYTICS --> SIGNUPS[New Signups Trend Chart]
+    SYSANALYTICS --> CONVVOLUME[Conversation Volume Chart]
+    SYSANALYTICS --> PASSRATE[Judge Pass Rate Trend]
+    SYSANALYTICS --> ESCBYCAT[Escalation Rate by Category]
+    SYSANALYTICS --> EMERGACC[Emergency Detection Accuracy]
+    SYSANALYTICS --> TOKENS[Token Usage Metrics]
+    SYSANALYTICS --> EXPORTANA[Export Analytics CSV]
+    
+    START --> AUDIT[Audit Logs]
+    AUDIT --> LOGALL[Log All User Actions]
+    AUDIT --> SEARCHLOG[Search by User/Action/Date]
+    AUDIT --> FILTERLOG[Filter by Log Type<br/>Auth / Data Access<br/>Config Change]
+    AUDIT --> EXPORTLOG[Export Logs CSV]
+    AUDIT --> RETENTION[Log Retention: 7 Years]
+    AUDIT --> COMPLIANCE[Generate Compliance Reports]
+    AUDIT --> PATTERN[Access Pattern Analysis]
+    
+    START --> JUDGECONFIG[Judge Configuration]
+    JUDGECONFIG --> WEIGHTS[Criteria Weight Sliders<br/>Safety/Accuracy/Privacy<br/>Experience/Compliance]
+    WEIGHTS --> SUM[Ensure Sum = 100%]
+    JUDGECONFIG --> MINSCORE[Set Min Score Thresholds<br/>Per Criterion]
+    JUDGECONFIG --> THRESHOLDS[Decision Thresholds<br/>Pass ≥85, Revise 60-84<br/>Escalate <60]
+    JUDGECONFIG --> SAVECONFIG[Save Configuration Version]
+    JUDGECONFIG --> ROLLBACK[Rollback to Previous Config]
+    JUDGECONFIG --> PREVIEW[Preview Changes<br/>Before Deploy]
+    
+    START --> KEYWORDS[Emergency Keywords]
+    KEYWORDS --> KEYLIST[Keyword List by Category<br/>Cardiac/Respiratory<br/>Neurological]
+    KEYLIST --> ADDKEY[Add/Edit/Delete Keywords]
+    KEYLIST --> SENSITIVITY[Adjust Sensitivity<br/>Exact/Fuzzy Match]
+    KEYLIST --> TEST[Test Keyword Detection]
+    KEYLIST --> TRIGGERCOUNT[Keyword Trigger Count]
+    KEYLIST --> FALSEPOSITIVES[False Positive Rate]
+    KEYLIST --> EXPORTKEY[Export Keyword List]
+    
+    START --> HEALTH[System Health Monitor]
+    HEALTH --> APITIME[API Response Time Chart]
+    HEALTH --> DBPERF[Database Performance Metrics]
+    HEALTH --> AISTATUS[AI Service Status<br/>Primary/Judge]
+    HEALTH --> ERRORRATE[Error Rate]
+    HEALTH --> SESSIONS[Active Sessions Count]
+    HEALTH --> QUEUES[Queue Depths]
+    HEALTH --> UPTIME[Uptime Percentage]
+    HEALTH --> ALERTS[Configure Alert Rules]
+```
+
+### 4.4. Authentication & Authorization Flow
+
+```mermaid
+flowchart TD
+    START([User Access]) --> ROLE{User Role?}
+    
+    ROLE -->|Patient| PREG[Patient Registration]
+    ROLE -->|Provider| PROVLOGIN[Provider Login]
+    ROLE -->|Admin| ADMINLOGIN[Admin Login]
+    ROLE -->|Trainer| TRAINLOGIN[Trainer Login]
+    
+    PREG --> FORM[Registration Form<br/>Email/Phone/Password]
+    FORM --> VALIDATE[Validate Password<br/>Min 8 chars + complexity]
+    VALIDATE --> OTP[Send OTP via Twilio]
+    OTP --> VERIFY[Verify OTP]
+    VERIFY --> CONSENT[Accept Terms & HIPAA]
+    CONSENT --> CREATEUSER[Create User in SQL DB]
+    CREATEUSER --> ACTIVATION[Send Activation Email]
+    ACTIVATION --> PLOGIN[Patient Login]
+    
+    PLOGIN --> PCREDS[Enter Email/Phone + Password]
+    PCREDS --> PAUTH[Authenticate]
+    PAUTH --> ATTEMPTS{Failed Attempts<br/><5?}
+    ATTEMPTS -->|Yes| PSESSION[Create Session<br/>30min timeout]
+    ATTEMPTS -->|No| LOCKOUT[Account Lockout]
+    PSESSION --> PJWT[Generate JWT Token]
+    PJWT --> PDASH[Patient Dashboard]
+    
+    PROVLOGIN --> ADB2C1[Azure AD B2C Auth]
+    ADB2C1 --> PROVMFA[MFA Required<br/>SMS/Authenticator]
+    PROVMFA --> ROLE1[Verify Provider Role]
+    ROLE1 --> PROVJWT[Generate JWT]
+    PROVJWT --> PROVDASH[Provider Dashboard]
+    
+    ADMINLOGIN --> ADB2C2[Azure AD B2C Auth]
+    ADB2C2 --> ADMINMFA[Mandatory MFA]
+    ADMINMFA --> IPCHECK[IP Whitelist Check]
+    IPCHECK --> ROLE2[Verify Admin Role]
+    ROLE2 --> ADMINJWT[Generate JWT]
+    ADMINJWT --> ADMINDASH[Admin Dashboard]
+    
+    TRAINLOGIN --> ADB2C3[Azure AD B2C Auth]
+    ADB2C3 --> TRAINMFA[MFA Required]
+    TRAINMFA --> ROLE3[Verify Trainer Role]
+    ROLE3 --> TRAINJWT[Generate JWT]
+    TRAINJWT --> TRAINDASH[Training Portal]
+    
+    LOCKOUT --> RESET[Password Reset Flow]
+    RESET --> RESETLINK[Send Reset Link<br/>Expires 1hr]
+    RESETLINK --> NEWPASS[Set New Password]
+    NEWPASS --> CONFIRM[Send Confirmation]
+    CONFIRM --> PLOGIN
+```
+
+### 4.5. Notification System Flow
+
+```mermaid
+flowchart TD
+    START([Notification Trigger]) --> TYPE{Notification<br/>Type?}
+    
+    TYPE --> EMAIL[Email Notifications]
+    TYPE --> SMS[SMS Notifications]
+    TYPE --> INAPP[In-App Notifications]
+    TYPE --> PUSH[Push Notifications]
+    
+    EMAIL --> EMAILTYPES[Email Types]
+    EMAILTYPES --> WELCOME[Welcome Email on Signup]
+    EMAILTYPES --> RESETPASS[Password Reset Emails]
+    EMAILTYPES --> APPTREM[Appointment Reminders]
+    EMAILTYPES --> ESCALERT[Escalation Alerts to Providers]
+    EMAILTYPES --> PAYMENT[Payment Processed]
+    EMAILTYPES --> WEEKLY[Weekly Summary Emails]
+    EMAILTYPES --> TEMPLATE[Email Templates]
+    EMAILTYPES --> UNSUB[Unsubscribe Option]
+    EMAILTYPES --> TRACK[Track Delivery Status]
+    
+    SMS --> SMSTYPES[SMS Types via Twilio]
+    SMSTYPES --> OTP[OTP for Login/Verification]
+    SMSTYPES --> EMERGSMS[Emergency Alerts]
+    SMSTYPES --> APPTSMS[Appointment Reminders<br/>24hr & 1hr]
+    SMSTYPES --> PROVSMS[Provider Escalation Alerts]
+    SMSTYPES --> PAYSMS[Payment Confirmations]
+    SMSTYPES --> RATELIMIT[SMS Rate Limiting]
+    SMSTYPES --> OPTOUT[Opt-out Option]
+    SMSTYPES --> TRACKSMS[Track Delivery Status]
+    
+    INAPP --> INAPPFEATURES[In-App Features]
+    INAPPFEATURES --> BELL[Notification Bell Icon<br/>with Count Badge]
+    INAPPFEATURES --> DROPDOWN[Notification Dropdown List]
+    INAPPFEATURES --> TYPES[Types: Info/Warning<br/>Error/Success]
+    INAPPFEATURES --> MARKREAD[Mark as Read/Unread]
+    INAPPFEATURES --> CLEARALL[Clear All Notifications]
+    INAPPFEATURES --> STORE[Store History: 30 Days]
+    INAPPFEATURES --> NAVIGATE[Click to Navigate<br/>to Relevant Page]
+    
+    PUSH --> PUSHPLATFORMS[Push Platforms]
+    PUSHPLATFORMS --> BROWSER[Browser Push for Web]
+    PUSHPLATFORMS --> APNS[APNS for iOS]
+    PUSHPLATFORMS --> FCM[FCM for Android]
+    PUSHPLATFORMS --> PERMISSION[Request Notification Permission]
+    PUSHPLATFORMS --> CRITICAL[Critical Case Alerts]
+    PUSHPLATFORMS --> APPTPUSH[Appointment Reminders]
+    PUSHPLATFORMS --> MESSAGE[Message Received Alerts]
+    PUSHPLATFORMS --> PREFS[Notification Preferences]
+    PUSHPLATFORMS --> DND[Do Not Disturb Mode]
+```
+
+### 4.7. Payment & Subscription Flow
+
+```mermaid
+flowchart TD
+    START([Payment System]) --> STRIPE[Stripe Integration]
+    
+    STRIPE --> CONNECT[Set up Stripe Connect]
+    STRIPE --> PAYMETHOD[Store Payment Methods<br/>Securely]
+    STRIPE --> SUBSCRIPTION[Manage Subscriptions]
+    STRIPE --> INVOICE[Generate Invoices]
+    STRIPE --> HISTORY[Display Payment History]
+    STRIPE --> REFUND[Process Refunds]
+    STRIPE --> WEBHOOK[Handle Webhooks]
+    STRIPE --> PCI[Ensure PCI Compliance]
+    
+    START --> TOKENTRACK[Token Usage Tracking]
+    TOKENTRACK --> REALTIME[Real-time Token Counting]
+    TOKENTRACK --> FREETIER[Free Tier<br/>1000 tokens/month]
+    TOKENTRACK --> PREMIUM[Premium Tier<br/>Unlimited]
+    TOKENTRACK --> ALERTS[Usage Alerts<br/>80% & 100%]
+    TOKENTRACK --> UPGRADE[Display Upgrade Prompts]
+    TOKENTRACK --> COST[Calculate Token Costs]
+    TOKENTRACK --> ANALYTICS[Show Usage Analytics]
+    TOKENTRACK --> RESET[Monthly Reset]
+    
+    FREETIER --> CHECK{Usage<br/>Exceeded?}
+    CHECK -->|Yes| BLOCK[Block AI Features]
+    CHECK -->|No| ALLOW[Allow Conversation]
+    BLOCK --> UPGRADEPROMPT[Show Upgrade Prompt]
+    UPGRADEPROMPT --> PAYMENT[Process Payment]
+    PAYMENT --> PREMIUM
+```
 
 ---
 
 
----
+
+### 5.1. Mobile App Architecture 
+
+```mermaid
+flowchart TD
+    START([Mobile App]) --> PLATFORM{Platform?}
+    
+    PLATFORM --> IOS[iOS App Development]
+    PLATFORM --> ANDROID[Android App Development]
+    
+    IOS --> IOSSETUP[iOS Setup]
+    IOSSETUP --> XCODE[Create Xcode Project]
+    XCODE --> BUNDLE[Configure Bundle ID]
+    XCODE --> ICONS[App Icons & Splash]
+    XCODE --> INFOPLIST[Configure Info.plist<br/>Camera/Mic/Health Permissions]
+    INFOPLIST --> HEALTHKIT[Integrate HealthKit]
+    INFOPLIST --> BIOMETRIC[Face ID/Touch ID]
+    INFOPLIST --> APNSSETUP[Setup APNS Certificates]
+    INFOPLIST --> SIGNING[Code Signing & Provisioning]
+    SIGNING --> IPA[Build IPA for TestFlight]
+    IPA --> APPSTORE[Submit to App Store Connect]
+    APPSTORE --> REVIEW[App Store Review Process]
+    
+    ANDROID --> ANDROIDSETUP[Android Setup]
+    ANDROIDSETUP --> STUDIO[Create Android Studio Project]
+    STUDIO --> PACKAGE[Configure Package Name]
+    STUDIO --> ANDROIDICONS[App Icons & Splash]
+    STUDIO --> MANIFEST[Configure AndroidManifest.xml<br/>Camera/Mic/Storage Permissions]
+    MANIFEST --> GOOGLEFIT[Integrate Google Fit API]
+    MANIFEST --> FINGERPRINT[Fingerprint Authentication]
+    MANIFEST --> FCMSETUP[Setup FCM]
+    MANIFEST --> KEYSTORE[Configure Signing Keys]
+    KEYSTORE --> APK[Build APK/AAB]
+    APK --> PLAYSTORE[Submit to Google Play Console]
+    PLAYSTORE --> PLAYREVIEW[Google Play Review Process]
+    
+    START --> SCREENS[Mobile Screens]
+    SCREENS --> AUTH[Authentication Screens<br/>Login/Register/OTP/Forgot Password]
+    SCREENS --> ONBOARD[Onboarding Screens<br/>Welcome/Health Profile Wizard]
+    SCREENS --> CHATUI[Chat Interface<br/>Message Bubbles/Voice Input]
+    SCREENS --> DASH[Dashboard Screen<br/>Health Summary/Quick Actions]
+    SCREENS --> SYMPTOMSCREEN[Symptom Tracker Screen<br/>Entry Form/Timeline/Charts]
+    SCREENS --> MEDSCREEN[Medication Screen<br/>List/Reminders/History]
+    SCREENS --> APPTSCREEN[Appointments Screen<br/>List/Calendar Integration]
+    SCREENS --> PROFILE[Profile Screen<br/>Edit Info/Settings]
+    SCREENS --> SETTINGS[Settings Screen<br/>Notifications/Biometric/Theme]
+    
+    START --> FEATURES[Mobile Features]
+    FEATURES --> NAV[Navigation<br/>Bottom Tab/Stack/Drawer]
+    FEATURES --> API[API Integration<br/>Axios/Error Handling]
+    FEATURES --> STATE[State Management<br/>Redux/Redux Persist]
+    FEATURES --> OFFLINE[Offline Mode<br/>AsyncStorage/Sync Queue]
+    FEATURES --> PUSHNOTIF[Push Notifications<br/>APNS/FCM]
+    FEATURES --> BIOAUTH[Biometric Authentication<br/>Face ID/Touch ID/Fingerprint]
+    FEATURES --> CAMERA[Camera Integration<br/>Capture/Scan/OCR]
+    FEATURES --> HEALTHSYNC[Health Data Sync<br/>HealthKit/Google Fit]
+    FEATURES --> VOICE[Voice Input<br/>Azure Speech-to-Text]
+    FEATURES --> ERROR[Error Handling<br/>Global Boundary/Retry]
+    FEATURES --> PERF[Performance Optimization<br/>Lazy Loading/Caching]
+    FEATURES --> TEST[Testing<br/>Jest/Detox/E2E]
+    FEATURES --> ANALYTICS[Analytics<br/>Firebase Analytics]
+    FEATURES --> SECURITY[Security<br/>Certificate Pinning/Encryption]
+```
+
+
